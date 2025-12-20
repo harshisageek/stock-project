@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+body,
+html,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+body {
+  /* The background gradient is handled in App.jsx but we set a default dark bg here */
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border-radius: 1.5rem;
+  /* rounded-3xl equivalent */
+}
+
+/* Custom Scrollbar for Webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
