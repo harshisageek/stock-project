@@ -46,7 +46,12 @@ def setup_driver():
 
 def scrape_full_text(driver, url, timeout=10):
     try:
+        # Strict defensive check
+        driver.set_page_load_timeout(timeout)
+        print(f"Scraping: {url[:100]}...", flush=True) # Log URL to identify hanging sites
+        
         driver.get(url)
+        
         # Reduced sleep: We are hitting different publishers, so we don't need long sleeps.
         # Speed vs Safety trade-off.
         time.sleep(random.uniform(0.5, 1.5))
@@ -60,7 +65,7 @@ def scrape_full_text(driver, url, timeout=10):
             
         return text_content
     except Exception as e:
-        # print(f"Scrape Error: {e}")
+        print(f"Scrape Error or Timeout: {e}", flush=True)
         return None
 
 def worker_main():
