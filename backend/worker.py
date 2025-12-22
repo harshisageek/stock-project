@@ -61,8 +61,8 @@ def scrape_full_text(driver, url, timeout=10):
         return None
 
 def worker_main():
-    print(f"--- STARTING CLOUD WORKER ---")
-    print(f"Target: {len(TOP_150_STOCKS)} Stocks")
+    print(f"--- STARTING CLOUD WORKER ---", flush=True)
+    print(f"Target: {len(TOP_150_STOCKS)} Stocks", flush=True)
     
     db = NewsDatabase()
     driver = setup_driver()
@@ -79,7 +79,7 @@ def worker_main():
         import feedparser
         feed = feedparser.parse(rss_url)
         
-        print(f"[{ticker}] Found {len(feed.entries)} entries.")
+        print(f"[{ticker}] Found {len(feed.entries)} entries.", flush=True)
         
         # Limit to Top 10 High Quality
         entries = feed.entries[:10]

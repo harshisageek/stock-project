@@ -4,12 +4,22 @@ import torch
 # Initialize FinBERT (Load once)
 MODEL_NAME = "yiyanghkust/finbert-tone"
 
-print("Loading FinBERT model... this may take a moment.")
-tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
-model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
-# return_all_scores=True (or top_k=None in newer versions) gives us all labels
-nlp = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, top_k=None)
-print("FinBERT model loaded.")
+# Lazy Loading Singleton
+_nlp_pipeline = None
+
+def get_pipeline():
+    global _nlp_pipeline
+    if _nlp_pipeline is None:
+        print("Lazy Loading FinBERT model... (First run only)", flush=True)
+        try:
+            tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
+            model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
+            _nlp_pipeline = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, top_k=None)
+            print("FinBERT model loaded successfully.", flush=True)
+        except Exception as e:
+            print(f"Failed to load FinBERT: {e}", flush=True)
+            return None
+    return _nlp_pipeline
 
 def analyze_sentiment(text: str) -> float:
     """
@@ -21,6 +31,10 @@ def analyze_sentiment(text: str) -> float:
         return 0.0
         
     try:
+        nlp = get_pipeline()
+        if not nlp:
+            return 0.0
+            
         # FinBERT input limit is 512 tokens. truncated=True handles this.
         results = nlp(text[:2000], truncation=True, max_length=512)
         # Result format: [[{'label': 'Neutral', 'score': 0.8}, {'label': 'Positive', 'score': 0.1}, ...]]
