@@ -7,7 +7,7 @@ import { useState } from 'react';
 import StockChart from './StockChart';
 import StatsGrid from './StatsGrid';
 import SentimentGauge from './SentimentGauge';
-import { TrendingUp, Loader2 } from 'lucide-react';
+import { TrendingUp, Loader2, Database, FileText, Scissors, AlertTriangle, CheckCircle } from 'lucide-react';
 
 /* Internal TimeSelector Component */
 const TimeSelector = ({ activeRange, onSelect }) => {
@@ -31,10 +31,46 @@ const TimeSelector = ({ activeRange, onSelect }) => {
     );
 };
 
+/* Debug Stats Component */
+const DebugStats = ({ debug }) => {
+    if (!debug) return null;
+    const { total, full_text, snippet, timeouts } = debug;
+
+    return (
+        <div className="mt-8 bg-black/40 border border-white/5 rounded-2xl p-4 text-xs font-mono">
+            <h4 className="flex items-center gap-2 text-gray-400 mb-2 uppercase tracking-widest font-bold">
+                <Database className="w-3 h-3" /> Scraping Debug Stats
+            </h4>
+            <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="bg-white/5 p-2 rounded">
+                    <span className="block text-xl font-bold text-white">{total}</span>
+                    <span className="text-gray-500">Total</span>
+                </div>
+                <div className="bg-green-500/10 p-2 rounded border border-green-500/20">
+                    <span className="block text-xl font-bold text-green-400">{full_text}</span>
+                    <span className="text-green-600/70">Full Text</span>
+                </div>
+                <div className="bg-yellow-500/10 p-2 rounded border border-yellow-500/20">
+                    <span className="block text-xl font-bold text-yellow-400">{snippet}</span>
+                    <span className="text-yellow-600/70">Snippets</span>
+                </div>
+                <div className="bg-red-500/10 p-2 rounded border border-red-500/20">
+                    <span className="block text-xl font-bold text-red-400">{timeouts}</span>
+                    <span className="text-red-600/70">Timeouts</span>
+                </div>
+            </div>
+            <div className="mt-2 text-gray-600 text-center italic">
+                Timeout threshold: 1.5s per article
+            </div>
+        </div>
+    );
+};
+
 function Dashboard({ data, ticker, onRangeChange, isLoading }) {
-    const { current_sentiment, graph_data, news } = data;
+    const { current_sentiment, graph_data, news, debug } = data;
     const latestPrice = graph_data && graph_data.length > 0 ? graph_data[graph_data.length - 1].price : 0;
     const [timeRange, setTimeRange] = useState("1W");
+    const [showDebug, setShowDebug] = useState(true);
 
     // Helpers
     const getSentimentColor = (score) => {
@@ -118,6 +154,9 @@ function Dashboard({ data, ticker, onRangeChange, isLoading }) {
 
                 </div>
 
+                {/* Debug Stats Footer */}
+                {showDebug && <DebugStats debug={debug} />}
+
             </div>
 
             {/* RIGHT COLUMN: News Feed (Takes 1/3 width) */}
@@ -130,23 +169,44 @@ function Dashboard({ data, ticker, onRangeChange, isLoading }) {
                     <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                         {news && news.length > 0 ? (
                             news.map((item, idx) => (
-                                <div key={idx} className="group p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-purple-500/30 transition-all cursor-pointer">
+                                <div key={idx} className="group p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-purple-500/30 transition-all cursor-pointer relative overflow-hidden">
+                                    {/* Debug Source Badge */}
+                                    {item.debug && (
+                                        <div className="absolute top-2 right-2 flex gap-1">
+                                            {item.debug.content_source === 'full_text' ? (
+                                                <div className="bg-green-500/10 text-green-400 p-1 rounded" title="Full Text Analyzed">
+                                                    <FileText className="w-3 h-3" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-yellow-500/10 text-yellow-400 p-1 rounded" title="Snippet Fallback">
+                                                    <Scissors className="w-3 h-3" />
+                                                </div>
+                                            )}
+                                            {item.debug.scrape_status === 'timeout' && (
+                                                <div className="bg-red-500/10 text-red-400 p-1 rounded" title="Request Timed Out">
+                                                    <AlertTriangle className="w-3 h-3" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="flex justify-between items-start mb-2 gap-3">
                                         <span className="text-xs font-mono text-purple-300">
                                             {new Date(item.published).toLocaleDateString()}
                                         </span>
-                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.sentiment > 0 ? 'bg-green-500/20 text-green-300' :
-                                            item.sentiment < 0 ? 'bg-red-500/20 text-red-300' :
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.sentiment > 0.2 ? 'bg-green-500/20 text-green-300' :
+                                            item.sentiment < -0.2 ? 'bg-red-500/20 text-red-300' :
                                                 'bg-gray-500/20 text-gray-300'
                                             }`}>
                                             {item.sentiment.toFixed(2)}
                                         </span>
                                     </div>
-                                    <h4 className="text-gray-200 font-medium leading-snug group-hover:text-white transition-colors">
+                                    <h4 className="text-gray-200 font-medium leading-snug group-hover:text-white transition-colors pr-6">
                                         {item.title}
                                     </h4>
                                     <div className="mt-3 flex items-center justify-between">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wider">{item.publisher || 'Unknown Source'}</span>
+                                        <span className="text-xs text-gray-500 uppercase tracking-wider truncate max-w-[70%]">{item.publisher || 'Unknown Source'}</span>
+                                        {item.debug && <span className="text-[10px] text-gray-600 font-mono">{(item.debug.time_taken || 0).toFixed(2)}s</span>}
                                     </div>
                                 </div>
                             ))

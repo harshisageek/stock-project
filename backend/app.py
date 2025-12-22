@@ -20,7 +20,8 @@ import requests
 # feedparser and vaderSentiment are now used inside brain module
 
 from brain.quant import QuantEngine
-from brain.sentiment import fetch_google_news
+from brain.sentiment.news import fetch_google_news, calculate_news_metrics
+from backend.database import NewsDatabase
 
 from dotenv import load_dotenv
 
@@ -35,6 +36,9 @@ CORS(app, origins="*")
 TWELVE_DATA_KEY = os.getenv("TWELVE_DATA_KEY")
 if not TWELVE_DATA_KEY:
     print("Warning: TWELVE_DATA_KEY not found in environment variables.")
+
+# Initialize DB
+db = NewsDatabase()
 
 # In-memory cache: {ticker: {"data": {...}, "timestamp": float}}
 cache = {}
@@ -75,13 +79,42 @@ def set_cached_data(ticker: str, data: dict) -> None:
 
 
 def fetch_stock_data(ticker, range_str="1W"):
-    # 1. Get News (Google RSS) via Brain Sentiment Module
-    try:
-        analyzed_news, current_sentiment = fetch_google_news(ticker)
-    except Exception as e:
-        print(f"Error fetching news: {e}")
-        analyzed_news, current_sentiment = [], 0.0
+    # 2. Fetch News & Sentiment (Hybrid Strategy)
+    # Check DB first (Fast/Full Text)
+    print(f"Checking DB for {ticker}...")
+    cached_news = db.get_latest_news(ticker, limit=10)
+    
+    if cached_news and len(cached_news) > 0:
+        print(f"Found {len(cached_news)} articles in DB.")
+        analyzed_news = []
+        for article in cached_news:
+            # Map DB format to API format
+            analyzed_news.append({
+                "title": article['title'],
+                "published": article['published'],
+                "sentiment": article['sentiment_score'],
+                "link": article['link'],
+                "publisher": article['source'],
+                "debug": article['debug_metadata'] or {}
+            })
+        
+        # Calculate aggregate metrics from DB data
+        import numpy as np
+        if analyzed_news:
+            current_sentiment = np.mean([n['sentiment'] for n in analyzed_news])
+        else:
+            current_sentiment = 0.0
+            
+    else:
+        # Fallback to Live Scrape (Snippet/Slow) if not in DB
+        print("Not in DB. Live scraping...")
+        try:
+            analyzed_news, current_sentiment = fetch_google_news(ticker)
+        except Exception as e:
+            print(f"Error fetching news: {e}")
+            analyzed_news, current_sentiment = [], 0.0
 
+    # 3. Fetch Stock Data
     # Map range_str to Twelve Data outputsize
     range_map = {
         "1W": "7",
@@ -136,11 +169,20 @@ def fetch_stock_data(ticker, range_str="1W"):
         
     quant_result['signal'] = signal
 
+    # Aggregate Scraping Stats for Debugging
+    scraping_stats = {
+        "total": len(analyzed_news),
+        "full_text": sum(1 for n in analyzed_news if n['debug']['content_source'] == 'full_text'),
+        "snippet": sum(1 for n in analyzed_news if n['debug']['content_source'] == 'snippet'),
+        "timeouts": sum(1 for n in analyzed_news if n['debug']['scrape_status'] == 'timeout')
+    }
+
     return {
         "current_sentiment": round(current_sentiment, 4),
         "news": analyzed_news,
         "graph_data": graph_data,
-        "quant_analysis": quant_result
+        "quant_analysis": quant_result,
+        "debug": scraping_stats
     }
 
 
@@ -213,6 +255,12 @@ def analyze():
                         "histogram": 0
                     }
                 }
+            },
+            "debug": {
+                "total": 0,
+                "full_text": 0,
+                "snippet": 0,
+                "timeouts": 0
             }
         }
         return jsonify(circuit_breaker_data)

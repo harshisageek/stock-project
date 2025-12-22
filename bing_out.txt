@@ -1,0 +1,25 @@
+Loading FinBERT model... this may take a moment.
+FinBERT model loaded.
+Fetching RSS: https://www.bing.com/news/search?q=TSLA+stock&format=rss
+Found 11 entries.
+
+Title: What Can Trigger Tesla Stock’s Slide?
+Link: http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&tid=694791013bcd4e9786cfa117e6ba5c84&url=https%3a%2f%2fwww.forbes.com%2fsites%2fgreatspeculations%2f2025%2f12%2f19%2fwhat-can-trigger-tesla-stocks-slide%2f&c=3286731576820282339&mkt=en-in
+Scraping...
+Status: error
+Text Length: 0
+Snippet: None
+
+Title: Tesla's Stock Drives Up to a Record High, After a Year-Long Wait
+Link: http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&tid=694791013bcd4e9786cfa117e6ba5c84&url=https%3a%2f%2fwww.msn.com%2fen-us%2fmoney%2ftopstocks%2fteslas-stock-drives-up-to-a-record-high-after-a-year-long-wait%2far-AA1Stogm&c=16482172537715003328&mkt=en-in
+Scraping...
+Status: empty_content
+Text Length: 0
+Snippet: None
+
+Title: Tesla Stock Is Pulling Back After All-Time Highs: What's Going On?
+Link: http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&tid=694791013bcd4e9786cfa117e6ba5c84&url=https%3a%2f%2fwww.benzinga.com%2ftrading-ideas%2fmovers%2f25%2f12%2f49460980%2ftesla-stock-is-pulling-back-after-all-time-highs-whats-going-on&c=3070448771044695026&mkt=en-in
+Scraping...
+Status: success
+Text Length: 2485
+Snippet: Tesla Inc (NASDAQ:TSLA) shares are trading lower on Wednesday, pulling back after hitting all-time h
