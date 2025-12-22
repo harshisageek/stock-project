@@ -6,9 +6,9 @@ requests_cache
 python-dotenv
 transformers
 torch
-beautifulsoup4
 lxml
 supabase
-selenium
-webdriver-manager
 requests
+yfinance
+pandas
+scikit-learn

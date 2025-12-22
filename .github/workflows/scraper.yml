@@ -30,7 +30,5 @@ jobs:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
-        # GitHub Actions has Chrome installed by default, 
-        # but webdriver-manager handles the driver matching.
       run: |
         python -m backend.worker

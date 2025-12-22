@@ -1,15 +1,8 @@
 import time
-import random
 import os
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from backend.database import NewsDatabase
 from brain.sentiment.analyzer import analyze_sentiment
+import feedparser
 
 # Top 150 Stocks (Approximation of "Active" S&P 500)
 TOP_150_STOCKS = [
@@ -29,51 +22,11 @@ TOP_150_STOCKS = [
     "APD", "ECL", "CTAS", "ROP", "PNC", "COF", "FCX", "MMM", "NSC", "GM" 
 ]
 
-def setup_driver():
-    """Setup Headless Chrome for GitHub Actions Env"""
-    chrome_options = Options()
-    chrome_options.add_argument("--headless") 
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
-    chrome_options.page_load_strategy = 'eager' # Don't wait for images/css
-    
-    # In GitHub Actions, usually Chrome is installed. Local fallback for dev.
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.set_page_load_timeout(10) # Strict timeout
-    return driver
-
-def scrape_full_text(driver, url, timeout=10):
-    try:
-        # Strict defensive check
-        driver.set_page_load_timeout(timeout)
-        print(f"Scraping: {url[:100]}...", flush=True) # Log URL to identify hanging sites
-        
-        driver.get(url)
-        
-        # Reduced sleep: We are hitting different publishers, so we don't need long sleeps.
-        # Speed vs Safety trade-off.
-        time.sleep(random.uniform(0.5, 1.5))
-        
-        # Simple heuristic: Get all <p> tags
-        paragraphs = driver.find_elements(By.TAG_NAME, "p")
-        text_content = " ".join([p.text for p in paragraphs if len(p.text) > 50])
-        
-        if len(text_content) < 200:
-            return None # Failed or anti-bot challenge
-            
-        return text_content
-    except Exception as e:
-        print(f"Scrape Error or Timeout: {e}", flush=True)
-        return None
-
 def worker_main():
-    print(f"--- STARTING CLOUD WORKER ---", flush=True)
+    print(f"--- STARTING CLOUD WORKER (SNIPPET MODE) ---", flush=True)
     print(f"Target: {len(TOP_150_STOCKS)} Stocks", flush=True)
     
     db = NewsDatabase()
-    driver = setup_driver()
     
     total_processed = 0
     total_articles = 0
@@ -82,35 +35,20 @@ def worker_main():
         # Using Google News RSS (Snippet) as Discovery Source
         rss_url = f"https://news.google.com/rss/search?q={ticker}+stock+when:1d&hl=en-US&gl=US&ceid=US:en"
         
-        # We use a simple request to get the RSS first (fast)
-        # Then use Selenium for the DEEP links
-        import feedparser
         feed = feedparser.parse(rss_url)
         
-        print(f"[{ticker}] Found {len(feed.entries)} entries.", flush=True)
+        # Limit to 30 snippets per stock to avoid clutter but get good coverage
+        entries = feed.entries[:30]
         
-        # Custom Logic: 5 Full Text + 15 Snippets = 20 Total
-        entries = feed.entries[:20]
+        print(f"[{ticker}] Processing {len(entries)} snippets...", flush=True)
         
-        for i, entry in enumerate(entries):
+        for entry in entries:
             link = entry.link
             title = entry.title
+            summary = entry.summary if hasattr(entry, 'summary') else ""
             
-            # Logic: Top 5 get Full Text Scrape (High resource usage)
-            # The rest (6-20) get Snippet only (Zero resource usage)
-            should_scrape_full = (i < 5)
-            
-            full_text = None
-            if should_scrape_full:
-                full_text = scrape_full_text(driver, link)
-            
-            # Use Full Text if available, else Snippet
-            if full_text:
-                text_to_analyze = full_text
-                source_type = "full_text"
-            else:
-                text_to_analyze = title + ". " + (entry.summary if hasattr(entry, 'summary') else "")
-                source_type = "snippet"
+            # Combine Title + Summary for Analysis
+            text_to_analyze = f"{title}. {summary}"
             
             # --- AI ANALYSIS ---
             sentiment = analyze_sentiment(text_to_analyze)
@@ -121,12 +59,12 @@ def worker_main():
                 "title": title,
                 "published": time.strftime('%Y-%m-%d', entry.published_parsed) if hasattr(entry, 'published_parsed') else "",
                 "publisher": entry.source.title if hasattr(entry, 'source') else "Google News",
-                "text": full_text, # Can be None
-                "snippet": entry.summary[:500] if hasattr(entry, 'summary') else "",
+                "text": None, # No full text in snippet mode
+                "snippet": summary[:1000],
                 "sentiment": sentiment,
                 "debug": {
-                    "source": source_type,
-                    "worker_version": "1.1 (Hybrid 5/15)"
+                    "source": "snippet",
+                    "worker_version": "2.0 (Snippet Only)"
                 }
             }
             
@@ -134,10 +72,9 @@ def worker_main():
             total_articles += 1
             
         total_processed += 1
-        # Sleep to avoid rate limits
-        time.sleep(1.0)
+        # Minimal sleep just to be polite to Google RSS
+        time.sleep(0.1)
         
-    driver.quit()
     print(f"--- WORKER COMPLETE ---")
     print(f"Stocks Scanned: {total_processed}")
     print(f"Articles Saved: {total_articles}")

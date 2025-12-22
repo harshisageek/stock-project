@@ -20,7 +20,7 @@ import requests
 # feedparser and vaderSentiment are now used inside brain module
 
 from brain.quant import QuantEngine
-from brain.sentiment.news import fetch_google_news, calculate_news_metrics
+from brain.sentiment.news import fetch_google_news
 from backend.database import NewsDatabase
 
 from dotenv import load_dotenv
@@ -182,9 +182,9 @@ def fetch_stock_data(ticker, range_str="1W"):
     # Aggregate Scraping Stats for Debugging
     scraping_stats = {
         "total": len(analyzed_news),
-        "full_text": sum(1 for n in analyzed_news if n['debug']['content_source'] == 'full_text'),
-        "snippet": sum(1 for n in analyzed_news if n['debug']['content_source'] == 'snippet'),
-        "timeouts": sum(1 for n in analyzed_news if n['debug']['scrape_status'] == 'timeout')
+        "full_text": sum(1 for n in analyzed_news if n['debug'].get('content_source', n['debug'].get('source')) == 'full_text'),
+        "snippet": sum(1 for n in analyzed_news if n['debug'].get('content_source', n['debug'].get('source')) == 'snippet'),
+        "timeouts": sum(1 for n in analyzed_news if n['debug'].get('scrape_status') == 'timeout')
     }
 
     return {
