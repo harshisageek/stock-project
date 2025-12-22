@@ -98,10 +98,20 @@ def fetch_stock_data(ticker, range_str="1W"):
                 "debug": article['debug_metadata'] or {}
             })
         
-        # Calculate aggregate metrics from DB data
-        import numpy as np
+        # Calculate Weighted Sentiment from DB data
         if analyzed_news:
-            current_sentiment = np.mean([n['sentiment'] for n in analyzed_news])
+            total_weighted_score = 0.0
+            total_weights = 0.0
+            
+            for n in analyzed_news:
+                # Weight: Full Text = 3x, Snippet = 1x
+                is_full_text = n['debug'].get('source') == 'full_text'
+                weight = 3.0 if is_full_text else 1.0
+                
+                total_weighted_score += (n['sentiment'] * weight)
+                total_weights += weight
+            
+            current_sentiment = total_weighted_score / total_weights if total_weights > 0 else 0.0
         else:
             current_sentiment = 0.0
             

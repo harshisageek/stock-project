@@ -84,22 +84,28 @@ def worker_main():
         
         print(f"[{ticker}] Found {len(feed.entries)} entries.", flush=True)
         
-        # Limit to Top 10 High Quality
-        entries = feed.entries[:10]
+        # Custom Logic: 5 Full Text + 15 Snippets = 20 Total
+        entries = feed.entries[:20]
         
-        for entry in entries:
-            # Check if exists in DB? (Optimization: Check DB first to save Selenium time)
-            # For now, we scrape.
-            
+        for i, entry in enumerate(entries):
             link = entry.link
             title = entry.title
             
-            # --- SELENIUM FULL TEXT SCRAPE ---
-            full_text = scrape_full_text(driver, link)
+            # Logic: Top 5 get Full Text Scrape (High resource usage)
+            # The rest (6-20) get Snippet only (Zero resource usage)
+            should_scrape_full = (i < 5)
+            
+            full_text = None
+            if should_scrape_full:
+                full_text = scrape_full_text(driver, link)
             
             # Use Full Text if available, else Snippet
-            text_to_analyze = full_text if full_text else title
-            source_type = "full_text" if full_text else "snippet"
+            if full_text:
+                text_to_analyze = full_text
+                source_type = "full_text"
+            else:
+                text_to_analyze = title + ". " + (entry.summary if hasattr(entry, 'summary') else "")
+                source_type = "snippet"
             
             # --- AI ANALYSIS ---
             sentiment = analyze_sentiment(text_to_analyze)
@@ -115,7 +121,7 @@ def worker_main():
                 "sentiment": sentiment,
                 "debug": {
                     "source": source_type,
-                    "worker_version": "1.0"
+                    "worker_version": "1.1 (Hybrid 5/15)"
                 }
             }
             
