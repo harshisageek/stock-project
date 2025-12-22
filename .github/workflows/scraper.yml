@@ -33,4 +33,4 @@ jobs:
         # GitHub Actions has Chrome installed by default, 
         # but webdriver-manager handles the driver matching.
       run: |
-        python backend/worker.py
+        python -m backend.worker
