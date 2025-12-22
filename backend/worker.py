@@ -36,17 +36,20 @@ def setup_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+    chrome_options.page_load_strategy = 'eager' # Don't wait for images/css
     
     # In GitHub Actions, usually Chrome is installed. Local fallback for dev.
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver.set_page_load_timeout(10) # Strict timeout
     return driver
 
 def scrape_full_text(driver, url, timeout=10):
     try:
         driver.get(url)
-        # Random sleep to mimic human
-        time.sleep(random.uniform(2.0, 5.0))
+        # Reduced sleep: We are hitting different publishers, so we don't need long sleeps.
+        # Speed vs Safety trade-off.
+        time.sleep(random.uniform(0.5, 1.5))
         
         # Simple heuristic: Get all <p> tags
         paragraphs = driver.find_elements(By.TAG_NAME, "p")
