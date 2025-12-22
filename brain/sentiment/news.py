@@ -1,23 +1,33 @@
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import feedparser
 from brain.sentiment.analyzer import analyze_sentiment
-from brain.sentiment.scraper import scrape_articles_parallel, calculate_source_weight
+
+# Trusted sources for simple weighting
+TRUSTED_SOURCES = [
+    "bloomberg.com", "reuters.com", "cnbc.com", "wsj.com", "ft.com", 
+    "finance.yahoo.com", "marketwatch.com", "seekingalpha.com", "investing.com"
+]
+
+def calculate_source_weight(url):
+    """
+    Get weight (0.5 to 1.5) based on domain authority.
+    """
+    for domain in TRUSTED_SOURCES:
+        if domain in url:
+            return 1.5
+    return 1.0
 
 def fetch_google_news(ticker):
     """
-    Fetches news for a ticker, scrapes full content (parallel), 
-    analyzes sentiment (FinBERT), and returns weighted results.
+    Fetches news snippets for a ticker, analyzes sentiment (FinBERT), 
+    and returns weighted results. (Snippet-Only Mode)
     """
     # 1. Scrapes Google News RSS
     rss_url = f"https://news.google.com/rss/search?q={ticker}+stock+when:3d&hl=en-US&gl=US&ceid=US:en"
     feed = feedparser.parse(rss_url)
     
     entries = feed.entries[:10]
-    articles_to_scrape = [{"link": entry.link} for entry in entries]
-    
-    # 2. Parallel Scraping (Fast, with timeouts)
-    scrape_results = scrape_articles_parallel(articles_to_scrape, timeout=4.5)
     
     analyzed_news = []
     total_weighted_score = 0.0
@@ -25,28 +35,20 @@ def fetch_google_news(ticker):
     
     now = datetime.now()
     
-    for i, entry in enumerate(entries):
-        scrape_result = scrape_results[i]
-        
-        # Determine content source
-        if scrape_result['status'] == 'success' and scrape_result['text']:
-            text_to_analyze = scrape_result['text']
-            content_source = "full_text"
-        else:
-            # Fallback to Title + Description
-            description = entry.description if hasattr(entry, 'description') else ""
-            text_to_analyze = f"{entry.title}. {description}"
-            content_source = "snippet"
+    for entry in entries:
+        # Fallback to Title + Description (Snippet)
+        description = entry.description if hasattr(entry, 'description') else ""
+        text_to_analyze = f"{entry.title}. {description}"
+        content_source = "snippet"
 
-        # 3. Analyze Sentiment
+        # 2. Analyze Sentiment
         raw_score = analyze_sentiment(text_to_analyze)
         
-        # 4. Calculate Weights
+        # 3. Calculate Weights
         # Source Weight
         source_weight = calculate_source_weight(entry.link)
         
         # Recency Weight (Decay)
-        # Parse published date
         try:
             pub_struct = entry.published_parsed
             pub_dt = datetime.fromtimestamp(time.mktime(pub_struct))
@@ -68,8 +70,8 @@ def fetch_google_news(ticker):
             "published": time.strftime('%Y-%m-%d', entry.published_parsed) if hasattr(entry, 'published_parsed') else now.strftime('%Y-%m-%d'),
             "sentiment": round(raw_score, 4),
             "debug": {
-                "scrape_status": scrape_result['status'],
-                "time_taken": scrape_result['time_taken'],
+                "scrape_status": "success",
+                "time_taken": 0.0,
                 "content_source": content_source,
                 "weight": round(final_weight, 2)
             }
