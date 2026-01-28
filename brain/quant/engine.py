@@ -107,115 +107,72 @@ class QuantEngine:
         return float(sma.iloc[-1]) if not pd.isna(sma.iloc[-1]) else np.nan
     
     def calc_macd(self, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
-        """
-        Calculate the Moving Average Convergence Divergence (MACD).
-        
-        MACD shows the relationship between two EMAs and is used to
-        identify momentum changes and potential trend reversals.
-        
-        Args:
-            fast: Fast EMA period (default: 12)
-            slow: Slow EMA period (default: 26)
-            signal: Signal line EMA period (default: 9)
-        
-        Returns:
-            Dictionary containing:
-                - macd_line: MACD line value (fast EMA - slow EMA)
-                - signal_line: Signal line value (EMA of MACD line)
-                - histogram: MACD histogram (MACD line - Signal line)
-        """
+        # ... (Existing MACD implementation)
         if self.df is None or len(self.df) < slow + signal:
-            return {
-                'macd_line': np.nan,
-                'signal_line': np.nan,
-                'histogram': np.nan
-            }
-        
-        # Calculate EMAs
+            return {'macd_line': np.nan, 'signal_line': np.nan, 'histogram': np.nan}
         ema_fast = self.df['close'].ewm(span=fast, adjust=False).mean()
         ema_slow = self.df['close'].ewm(span=slow, adjust=False).mean()
-        
-        # MACD Line
         macd_line = ema_fast - ema_slow
-        
-        # Signal Line
         signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-        
-        # Histogram
         histogram = macd_line - signal_line
+        return {
+            'macd_line': float(macd_line.iloc[-1]),
+            'signal_line': float(signal_line.iloc[-1]),
+            'histogram': float(histogram.iloc[-1])
+        }
+
+    def calc_bollinger_bands(self, period: int = 20, std_dev: int = 2) -> dict:
+        """Calculates Upper and Lower Bollinger Bands."""
+        if self.df is None or len(self.df) < period:
+            return {'upper': np.nan, 'lower': np.nan, 'middle': np.nan}
+        
+        middle_band = self.df['close'].rolling(window=period).mean()
+        std = self.df['close'].rolling(window=period).std()
+        upper_band = middle_band + (std * std_dev)
+        lower_band = middle_band - (std * std_dev)
         
         return {
-            'macd_line': float(macd_line.iloc[-1]) if not pd.isna(macd_line.iloc[-1]) else np.nan,
-            'signal_line': float(signal_line.iloc[-1]) if not pd.isna(signal_line.iloc[-1]) else np.nan,
-            'histogram': float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else np.nan
+            'upper': float(upper_band.iloc[-1]),
+            'lower': float(lower_band.iloc[-1]),
+            'middle': float(middle_band.iloc[-1])
         }
-    
+
     def calculate_score(self, sentiment_score: float) -> dict:
-        """
-        Calculate the Composite Trading Score combining technicals and sentiment.
+        # ... (Previous code)
+        current_price = float(self.df['close'].iloc[-1])
+        rsi_val = self.calc_rsi()
+        sma_val = self.calc_sma()
+        bb = self.calc_bollinger_bands()
         
-        Weighted Formula: Final = (0.3 * Sentiment) + (0.4 * Trend) + (0.3 * RSI)
-        
-        Scoring Logic:
-            - RSI: Oversold (< 30) = +100, Overbought (> 70) = -100, linear scale between
-            - Trend: Price > SMA = +100, Price <= SMA = -100
-            - Sentiment: Directly scaled from -1.0/1.0 to -100/100
-        
-        Args:
-            sentiment_score: Sentiment value in range [-1.0, 1.0]
-        
-        Returns:
-            Dictionary containing:
-                - final_score: Composite score (-100 to +100)
-                - breakdown: Individual indicator values and normalized scores
-        """
-        # Get current price
-        current_price = float(self.df['close'].iloc[-1]) if self.df is not None and len(self.df) > 0 else np.nan
-        
-        # Calculate technical indicators
-        rsi_val = self.calc_rsi(period=14)
-        sma_val = self.calc_sma(period=50)
-        macd_data = self.calc_macd()
-        
-        # === Normalize RSI Score ===
-        # RSI < 30 (Oversold) -> +100 (bullish signal)
-        # RSI > 70 (Overbought) -> -100 (bearish signal)
-        # Linear interpolation between 30-70
-        if pd.isna(rsi_val):
-            rsi_normalized = 0
-        elif rsi_val < 30:
-            rsi_normalized = 100
-        elif rsi_val > 70:
-            rsi_normalized = -100
+        # === Bollinger Band Score ===
+        # Price > Upper Band = Overbought (-100)
+        # Price < Lower Band = Oversold (+100)
+        if pd.isna(current_price) or pd.isna(bb['upper']):
+            bb_score = 0
+        elif current_price > bb['upper']:
+            bb_score = -100
+        elif current_price < bb['lower']:
+            bb_score = 100
         else:
-            # Linear scale: RSI 30 -> +100, RSI 50 -> 0, RSI 70 -> -100
-            rsi_normalized = 100 - ((rsi_val - 30) * (200 / 40))
+            bb_score = 0
+            
+        # Re-balancing Weights: Sentiment (25%), Trend (35%), RSI (20%), BB (20%)
+        sentiment_normalized = sentiment_score * 100
+        trend_normalized = 100 if current_price > sma_val else -100
+        rsi_normalized = 100 - ((rsi_val - 30) * 5) if not pd.isna(rsi_val) else 0
         
-        # === Normalize Trend Score ===
-        # Price > SMA -> +100 (bullish)
-        # Price <= SMA -> -100 (bearish)
-        if pd.isna(current_price) or pd.isna(sma_val):
-            trend_normalized = 0
-        elif current_price > sma_val:
-            trend_normalized = 100
-        else:
-            trend_normalized = -100
-        
-        # === Normalize Sentiment Score ===
-        # Convert from [-1.0, 1.0] to [-100, 100]
-        sentiment_normalized = float(sentiment_score) * 100
-        sentiment_normalized = max(-100, min(100, sentiment_normalized))  # Clamp to range
-        
-        # === Calculate Weighted Final Score ===
-        # Weights: Sentiment (30%), Trend (40%), RSI (30%)
         final_score = (
-            (0.3 * sentiment_normalized) +
-            (0.4 * trend_normalized) +
-            (0.3 * rsi_normalized)
+            (0.25 * sentiment_normalized) +
+            (0.35 * trend_normalized) +
+            (0.20 * rsi_normalized) +
+            (0.20 * bb_score)
         )
         
         # Clamp final score to [-100, 100]
         final_score = max(-100, min(100, final_score))
+        
+        # Get MACD Data
+        macd_data = self.calc_macd()
         
         return {
             'final_score': round(final_score, 2),

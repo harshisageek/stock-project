@@ -14,50 +14,50 @@ def get_pipeline():
         try:
             tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
             model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
-            _nlp_pipeline = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, top_k=None)
-            print("FinBERT model loaded successfully.", flush=True)
+            # Use GPU if available for batch processing
+            device = 0 if torch.cuda.is_available() else -1
+            _nlp_pipeline = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, top_k=None, device=device)
+            print(f"FinBERT model loaded successfully on {'GPU' if device == 0 else 'CPU'}.", flush=True)
         except Exception as e:
-            print(f"Failed to load FinBERT: {e}", flush=True)
+            print(f"CRITICAL: Failed to load FinBERT: {e}", flush=True)
             return None
     return _nlp_pipeline
 
-def analyze_sentiment(text: str) -> float:
+def analyze_sentiment_batch(texts: list) -> list:
     """
-    Analyze sentiment of text using FinBERT.
-    Returns composite score: Prob(Positive) - Prob(Negative).
-    Range: -1.0 to 1.0.
+    Analyzes a list of strings in a single batch.
+    Returns a list of float scores (-1.0 to 1.0).
     """
-    if not text or len(text.strip()) < 5:
-        return 0.0
+    if not texts:
+        return []
         
     try:
         nlp = get_pipeline()
         if not nlp:
-            return 0.0
+            return [0.0] * len(texts)
             
-        # FinBERT input limit is 512 tokens. truncated=True handles this.
-        results = nlp(text[:2000], truncation=True, max_length=512)
-        # Result format: [[{'label': 'Neutral', 'score': 0.8}, {'label': 'Positive', 'score': 0.1}, ...]]
-        # Note: pipeline with top_k=None returns a list of lists (for batches) or just list (if single).
-        # We need to handle the structure carefully.
+        # Clean and truncate texts
+        cleaned_texts = [t[:1000] if (t and len(t.strip()) > 5) else "" for t in texts]
         
-        scores = {}
-        # Flatten input if needed
-        dataset = results[0] if isinstance(results[0], list) else results
+        # Batch inference
+        results = nlp(cleaned_texts, truncation=True, max_length=512, batch_size=len(texts))
         
-        for item in dataset:
-            scores[item['label']] = item['score']
+        scores = []
+        for res in results:
+            # res is a list of dicts like [{'label': 'Positive', 'score': 0.9}, ...]
+            s_map = {item['label']: item['score'] for item in res}
+            scores.append(s_map.get("Positive", 0.0) - s_map.get("Negative", 0.0))
             
-        # Calculate composite score
-        pos = scores.get("Positive", 0.0)
-        neg = scores.get("Negative", 0.0)
-        
-        # Neutral doesn't contribute directly to direction, but dilutes the magnitude naturally 
-        # because pos + neg + neu = 1.
-        
-        sentiment_score = pos - neg
-        return sentiment_score
+        return scores
             
     except Exception as e:
-        print(f"FinBERT Error: {e}")
+        print(f"FinBERT Batch Error: {e}")
+        return [0.0] * len(texts)
+
+def analyze_sentiment(text: str) -> float:
+    """
+    Analyzes a single string. (Legacy wrapper for batch logic)
+    """
+    if not text or len(text.strip()) < 5:
         return 0.0
+    return analyze_sentiment_batch([text])[0]

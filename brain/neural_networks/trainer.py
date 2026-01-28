@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-import numpy as np
 import os
-
 from brain.neural_networks.model import StockLSTM
 
 class ModelTrainer:
@@ -12,56 +10,54 @@ class ModelTrainer:
         self.model_path = model_path
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-    def train(self, x_train, y_train, epochs=50, batch_size=32, learning_rate=0.001):
-        """
-        Trains the LSTM model and saves it.
-        """
-        # Convert to Tensors
-        x_tensor = torch.FloatTensor(x_train).to(self.device)
-        y_tensor = torch.FloatTensor(y_train).view(-1, 1).to(self.device)
+    def train(self, x_train, y_train, x_val, y_val, epochs=50, batch_size=64, learning_rate=0.001):
+        # 1. Create Datasets directly from pre-split data (No random_split!)
+        train_ds = TensorDataset(torch.FloatTensor(x_train).to(self.device), torch.FloatTensor(y_train).view(-1, 1).to(self.device))
+        val_ds = TensorDataset(torch.FloatTensor(x_val).to(self.device), torch.FloatTensor(y_val).view(-1, 1).to(self.device))
         
-        # Create DataLoader
-        dataset = TensorDataset(x_tensor, y_tensor)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         
-        # Initialize Model
-        # input_size=10 (OHLC, Vol, RSI, MACD, Sig, Sent, News)
-        model = StockLSTM(input_size=10).to(self.device)
+        # 2. Initialize Model
+        model = StockLSTM(input_size=13).to(self.device)
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4) # Regularization
         
-        criterion = nn.BCELoss() # Binary Cross Entropy for Probability
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        best_val_loss = float('inf')
+        print(f"Training on {self.device}... (Train: {len(x_train)}, Val: {len(x_val)})")
         
-        print(f"Starting training on {self.device}...")
-        
-        model.train()
         for epoch in range(epochs):
-            total_loss = 0
-            total_correct = 0
-            total_samples = 0
-            
-            for batch_x, batch_y in loader:
+            model.train()
+            train_loss = 0
+            for batch_x, batch_y in train_loader:
                 optimizer.zero_grad()
-                
                 outputs = model(batch_x)
                 loss = criterion(outputs, batch_y)
-                
                 loss.backward()
                 optimizer.step()
-                
-                total_loss += loss.item()
-                
-                # Calculate Accuracy
-                predicted = (outputs > 0.5).float()
-                total_correct += (predicted == batch_y).sum().item()
-                total_samples += batch_y.size(0)
+                train_loss += loss.item()
             
-            avg_loss = total_loss / len(loader)
-            accuracy = total_correct / total_samples
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+            model.eval()
+            val_loss = 0
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for batch_x, batch_y in val_loader:
+                    outputs = model(batch_x)
+                    val_loss += criterion(outputs, batch_y).item()
+                    predicted = (outputs > 0.5).float()
+                    correct += (predicted == batch_y).sum().item()
+                    total += batch_y.size(0)
+            
+            avg_train_loss = train_loss / len(train_loader)
+            avg_val_loss = val_loss / len(val_loader)
+            val_acc = correct / total
+            
+            print(f"Epoch [{epoch+1}/{epochs}] - Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.4f}")
+            
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                torch.save(model.state_dict(), self.model_path)
                 
-        # Save Model
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        torch.save(model.state_dict(), self.model_path)
-        print(f"Model saved to {self.model_path}")
-        
+        print(f"--- Training Complete. Best Val Loss: {best_val_loss:.4f} ---")
         return model

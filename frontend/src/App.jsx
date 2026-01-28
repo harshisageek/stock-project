@@ -1,14 +1,9 @@
-/**
- * Stock Sentiment Analyzer - Main App Component
- * 
- * Complete Rewrite: Clean, Spacious, Centered Layout.
- */
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Navbar from './components/Navbar';
+import Home from './components/Home';
 import Dashboard from './components/Dashboard';
-import DemoModeBanner from './components/DemoModeBanner';
-import SearchBar from './components/SearchBar';
-import { Loader2, Search } from 'lucide-react';
+import AnalysisLanding from './components/AnalysisLanding';
+import WatchlistPage from './components/WatchlistPage';
 
 const API_URL = 'http://127.0.0.1:5000';
 
@@ -16,146 +11,154 @@ function App() {
   const [ticker, setTicker] = useState('');
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState('');
+  const [view, setView] = useState('home'); // 'home' | 'dashboard'
+  const [activeTab, setActiveTab] = useState('markets'); // 'markets' | 'news'
+
+  // Dark Mode State
+  const [isDark, setIsDark] = useState(true);
+
+  // Apply Dark Mode to HTML tag
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(!isDark);
 
   /* Reusable fetch function */
-  const fetchStockData = async (tickerSymbol, range = '1W') => {
+  const fetchStockData = async (tickerSymbol, range = '1W', force = false, companyName = null) => {
     if (!tickerSymbol) return;
 
     setLoading(true);
-    // Only reset states if it's a new search, not a range update
-    if (range === '1W') {
-      setDemoMode(false);
-      setError('');
-      setStockData(null);
-      setHasSearched(true);
+    // Switch to dashboard view and analysis tab on search
+    setView('dashboard');
+    setActiveTab('analysis');
+    
+    // Clear data only if it's a fresh search
+    if (range === '1W' && !force && tickerSymbol !== ticker) {
+        setStockData(null);
     }
+    
+    setTicker(tickerSymbol);
+    setError('');
 
     try {
-      const response = await fetch(`${API_URL}/api/analyze?ticker=${tickerSymbol}&range=${range}`);
+      const url = `${API_URL}/api/analyze?ticker=${tickerSymbol}&range=${range}&force=${force}&name=${encodeURIComponent(companyName || '')}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        let errorMessage = `Server Error (${response.status})`;
+        try {
+            const errorData = await response.json();
+            if (errorData.error) errorMessage = errorData.error;
+        } catch (e) {
+            if (response.statusText) errorMessage = response.statusText;
+        }
+        throw new Error(errorMessage);
+      }
+
       const data = await response.json();
 
       if (data.error) {
         setError(data.error);
       } else {
         setStockData(data);
-        if (data.circuit_breaker) {
-          setDemoMode(true);
-        }
       }
     } catch (err) {
-      console.error(err);
-      setError("Failed to connect to server.");
+      console.error("Fetch Error:", err);
+      setError(err.message || "Failed to connect to server.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = (tickerInput) => {
-    // If called from event (form submit), ignore or handle differently?
-    // references to this function in App.jsx are now only from SearchBar which passes a string.
-    // However, if there are any legacy calls, we should be careful. 
-    // But since we are replacing all UI, we can assume tickerInput is the string.
-
+  const handleSearch = (tickerInput, name) => {
     if (!tickerInput) return;
-    setTicker(tickerInput); // Sync state
-
-    // Reset specific states for new search
-    setStockData(null);
-    setHasSearched(true);
-    setDemoMode(false);
-    setError('');
-
-    fetchStockData(tickerInput, '1W');
+    fetchStockData(tickerInput, '1W', false, name);
   };
 
   const handleRangeChange = (newRange) => {
     fetchStockData(ticker, newRange);
   };
 
-  // 1. LANDING STATE (Initial)
-  if (!hasSearched) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#1a103c] overflow-hidden">
+  const handleRefresh = () => {
+      fetchStockData(ticker, '1W', true);
+  };
 
-        {/* Main Glass Card */}
-        <div className="relative z-10 w-full max-w-md p-8 glass-panel transform transition-all duration-500">
+  // Define handler explicitly
+  const handleTabChange = (tab) => {
+      console.log("Tab Changed:", tab);
+      if (tab === 'analysis') {
+          setView('dashboard');
+      } else if (tab === 'watchlist') {
+          setView('watchlist');
+      } else {
+          setView('home');
+      }
+      setActiveTab(tab);
+  };
 
-          <div className="text-center mb-10">
-            <h1 className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 drop-shadow-lg mb-4">
-              AI Stock Sentiment
-            </h1>
-            <p className="text-gray-200 text-lg">
-              Analyze market sentiment instantly using sophisticated AI models.
-            </p>
-          </div>
-
-          <SearchBar onSearch={handleSearch} isLoading={loading} />
-
-        </div>
-      </div>
-    );
-  }
-
-  // 2. LOADING STATE
-  if (loading && !stockData) { // Only show full loader if no data exists (initial search)
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 text-white font-sans flex flex-col items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl rounded-3xl p-12 max-w-lg w-full text-center">
-          <Loader2 className="w-16 h-16 text-purple-400 animate-spin mx-auto mb-6" />
-          <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 mb-2">
-            Scanning Market Data...
-          </h2>
-          <p className="text-gray-300">Analyzing thousands of news points for {ticker}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // 3. DASHBOARD STATE
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 text-white font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[var(--bg-secondary)] text-[var(--text-primary)] font-sans transition-colors duration-200">
+        
+        {/* Navigation */}
+        <Navbar 
+            toggleTheme={toggleTheme} 
+            isDark={isDark} 
+            onSearch={handleSearch} 
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+        />
 
-      {/* Circuit Breaker Banner */}
-      {demoMode && <DemoModeBanner />}
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            {/* Error Banner */}
+            {error && (
+                <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong className="font-bold">Error: </strong>
+                    <span className="block sm:inline">{error}</span>
+                </div>
+            )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Views */}
+            {view === 'home' && (
+                <Home onSearch={handleSearch} activeTab={activeTab} isDark={isDark} />
+            )}
 
-        {/* Header / Search Bar Compact */}
-        <header className="flex flex-col md:flex-row items-center justify-between mb-10 gap-4">
-          <div
-            className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setHasSearched(false)}
-          >
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg group-hover:shadow-purple-500/50 transition-all">
-              <Search className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-100">AI Stock Sentiment</h1>
-          </div>
+            {view === 'watchlist' && (
+                <WatchlistPage onSearch={handleSearch} />
+            )}
 
-          <SearchBar onSearch={handleSearch} isLoading={loading} inline={true} />
-        </header>
-
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500/50 text-red-100 p-4 rounded-xl mb-8 text-center max-w-2xl mx-auto backdrop-blur-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Dashboard Content */}
-        {stockData && !error && (
-          <Dashboard
-            data={stockData}
-            ticker={ticker}
-            onRangeChange={handleRangeChange}
-            isLoading={loading}
-          />
-        )}
-
-      </div>
+            {view === 'dashboard' && (
+                <>
+                    {!stockData && loading ? (
+                        <div className="flex flex-col items-center justify-center min-h-[70vh] w-full">
+                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[var(--accent-color)] mb-6"></div>
+                            <h2 className="text-xl font-bold animate-pulse tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                                Analyzing Market Data for {ticker}...
+                            </h2>
+                        </div>
+                    ) : (
+                        stockData ? (
+                            <Dashboard 
+                                data={stockData} 
+                                ticker={ticker} 
+                                onRangeChange={handleRangeChange} 
+                                onRefresh={handleRefresh}
+                                isLoading={loading} 
+                            />
+                        ) : (
+                            <AnalysisLanding onSearch={handleSearch} />
+                        )
+                    )}
+                </>
+            )}
+        </main>
     </div>
   );
 }
