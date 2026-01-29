@@ -36,9 +36,7 @@ class DataProcessor:
                 df[col] = df[col].astype(float)
             df = df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume', 'datetime': 'Date'})
             return df.iloc[::-1].reset_index(drop=True)
-        except Exception as e:
-            print(f"Error fetching data for {ticker}: {e}")
-            return None
+        except: return None
 
     def add_technical_indicators(self, df):
         df = df.copy()

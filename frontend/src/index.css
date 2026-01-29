@@ -32,7 +32,7 @@
 
   /* Dark Mode (Binance Style) */
   .dark {
-    --bg-primary: #181a20; /* Binance Darkest */
+    --bg-primary: #161a1e; /* Binance Trade View Background */
     --bg-secondary: #0b0e11;
     --bg-card: #1e2329; /* Binance Card Gray */
     --text-primary: #eaecef;

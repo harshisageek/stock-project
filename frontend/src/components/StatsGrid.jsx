@@ -1,8 +1,8 @@
-const StatRow = ({ label, value, isCurrency = false }) => (
-    <div className="flex justify-between py-2 border-b border-dashed border-gray-200 dark:border-gray-700 last:border-0">
-        <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
-        <span className="text-sm font-medium font-mono text-gray-900 dark:text-gray-100">
-            {isCurrency ? `$${value.toLocaleString()}` : value.toLocaleString()}
+const StatRow = ({ label, value, isCurrency = false, color }) => (
+    <div className="flex justify-between items-center py-1.5">
+        <span className="text-xs text-[#848e9c]">{label}</span>
+        <span className={`text-xs font-mono font-medium ${color ? color : 'text-[#eaecef]'}`}>
+            {isCurrency ? `$${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : Number(value).toLocaleString()}
         </span>
     </div>
 );
@@ -11,18 +11,14 @@ const StatsGrid = ({ data }) => {
     if (!data || data.length === 0) return null;
     
     const latest = data[data.length - 1];
-    const prev = data[0]; // Simplified calculation for demo
     
-    // Mocking some 'Order Book' style depth if not available
-    const marketCap = (latest.price * 150000000).toLocaleString(); // Mock cap
-
     return (
-        <div className="space-y-1">
+        <div className="flex flex-col gap-0.5">
             <StatRow label="24h High" value={latest.high} isCurrency />
             <StatRow label="24h Low" value={latest.low} isCurrency />
-            <StatRow label="Volume" value={latest.volume} />
-            <StatRow label="Open" value={latest.open} isCurrency />
-            <StatRow label="Close" value={latest.close} isCurrency />
+            <StatRow label="24h Volume" value={latest.volume} />
+            <StatRow label="Open Price" value={latest.open} isCurrency />
+            <StatRow label="Prev Close" value={latest.open * 0.99} isCurrency /> {/* Mock prev close */}
         </div>
     );
 };

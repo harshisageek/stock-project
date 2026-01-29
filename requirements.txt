@@ -12,3 +12,5 @@ requests
 yfinance
 pandas
 scikit-learn
+pydantic
+xgboost

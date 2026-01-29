@@ -1,146 +1,99 @@
-import { 
-    ComposedChart, 
-    Area, 
-    Bar, 
-    XAxis, 
-    YAxis, 
-    Tooltip, 
-    ResponsiveContainer, 
-    CartesianGrid,
-    ReferenceLine,
-    Cell
-} from 'recharts';
-
-const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-        // Find data
-        const priceData = payload.find(p => p.dataKey === 'price');
-        const dataPoint = priceData ? priceData.payload : {};
-        const isUp = dataPoint.close >= dataPoint.open;
-        const color = isUp ? '#0ecb81' : '#f6465d';
-
-        return (
-            <div className="bg-[#1e2329] border border-gray-700 p-3 rounded-lg shadow-2xl text-xs min-w-[180px] z-50">
-                <p className="font-mono text-gray-400 mb-2 border-b border-gray-700 pb-1">{label}</p>
-                
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <span className="text-gray-500">Price:</span>
-                    <span className={`font-bold text-right`} style={{ color }}>
-                        ${dataPoint.price?.toFixed(2)}
-                    </span>
-                    
-                    <span className="text-gray-500">Open:</span>
-                    <span className="text-gray-300 text-right">${dataPoint.open?.toFixed(2)}</span>
-                    
-                    <span className="text-gray-500">High:</span>
-                    <span className="text-gray-300 text-right">${dataPoint.high?.toFixed(2)}</span>
-                    
-                    <span className="text-gray-500">Low:</span>
-                    <span className="text-gray-300 text-right">${dataPoint.low?.toFixed(2)}</span>
-                    
-                    <span className="text-gray-500">Vol:</span>
-                    <span className={`text-right ${isUp ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                        {(dataPoint.volume / 1000000).toFixed(1)}M
-                    </span>
-                </div>
-            </div>
-        );
-    }
-    return null;
-};
+import React, { useEffect, useRef } from 'react';
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
 
 const StockChart = ({ data }) => {
-    if (!data || data.length === 0) return null;
+    const chartContainerRef = useRef();
+    const chartRef = useRef(null);
 
-    // Determine overall trend color for the Area fill
-    const first = data[0].price;
-    const last = data[data.length - 1].price;
-    const isPositive = last >= first;
-    const mainColor = isPositive ? '#0ecb81' : '#f6465d';
+    useEffect(() => {
+        if (!data || data.length === 0 || !chartContainerRef.current) return;
+
+        // 1. Transform Data
+        const sortedData = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const candleData = sortedData.map(d => ({
+            time: d.date.split('T')[0], // YYYY-MM-DD
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+        }));
+
+        const volumeData = sortedData.map(d => ({
+            time: d.date.split('T')[0],
+            value: d.volume,
+            color: d.close >= d.open ? 'rgba(14, 203, 129, 0.5)' : 'rgba(246, 70, 93, 0.5)',
+        }));
+
+        // 2. Create Chart
+        const chart = createChart(chartContainerRef.current, {
+            layout: {
+                background: { type: ColorType.Solid, color: '#161a1e' },
+                textColor: '#848e9c',
+            },
+            grid: {
+                vertLines: { color: '#2b3139' },
+                horzLines: { color: '#2b3139' },
+            },
+            width: chartContainerRef.current.clientWidth,
+            height: 500,
+            crosshair: {
+                mode: CrosshairMode.Normal,
+            },
+            rightPriceScale: {
+                borderColor: '#2b3139',
+            },
+            timeScale: {
+                borderColor: '#2b3139',
+                timeVisible: true,
+            },
+        });
+
+        // 3. Add Series (v5 Syntax)
+        const candlestickSeries = chart.addSeries(CandlestickSeries, {
+            upColor: '#0ecb81',
+            downColor: '#f6465d',
+            borderVisible: false,
+            wickUpColor: '#0ecb81',
+            wickDownColor: '#f6465d',
+        });
+        candlestickSeries.setData(candleData);
+
+        const volumeSeries = chart.addSeries(HistogramSeries, {
+            priceFormat: {
+                type: 'volume',
+            },
+            priceScaleId: '', // Overlay
+            scaleMargins: {
+                top: 0.8, 
+                bottom: 0,
+            },
+        });
+        volumeSeries.setData(volumeData);
+
+        chartRef.current = chart;
+
+        // 4. Resize Handler
+        const handleResize = () => {
+            if (chartContainerRef.current) {
+                chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+
+        // Cleanup
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            chart.remove();
+        };
+    }, [data]);
 
     return (
-        <div className="w-full h-[500px] select-none bg-[#161a1e] rounded-lg">
-            <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={data} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                        <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={mainColor} stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor={mainColor} stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
-                    
-                    {/* Finer Grid */}
-                    <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#2b3139" opacity={0.4} />
-                    
-                    <XAxis 
-                        dataKey="date" 
-                        tickFormatter={(str) => {
-                            const date = new Date(str);
-                            return `${date.getDate()} ${date.toLocaleString('default', { month: 'short' })}`;
-                        }}
-                        tick={{ fontSize: 10, fill: '#848e9c' }}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={40}
-                        dy={10}
-                    />
-
-                    {/* Volume Axis (Hidden) */}
-                    <YAxis 
-                        yAxisId="volume"
-                        orientation="left"
-                        domain={[0, 'dataMax * 3']} 
-                        hide={true} 
-                    />
-
-                    {/* Price Axis (Right) */}
-                    <YAxis 
-                        yAxisId="price"
-                        domain={['auto', 'auto']}
-                        orientation="right"
-                        tick={{ fontSize: 11, fill: '#848e9c' }}
-                        tickFormatter={(val) => val.toFixed(2)}
-                        axisLine={false}
-                        tickLine={false}
-                        tickCount={8}
-                        width={50}
-                    />
-
-                    <Tooltip 
-                        content={<CustomTooltip />} 
-                        cursor={{ stroke: '#848e9c', strokeWidth: 1, strokeDasharray: '4 4' }}
-                        isAnimationActive={false}
-                    />
-
-                    {/* Colored Volume Bars */}
-                    <Bar yAxisId="volume" dataKey="volume" barSize={4}>
-                        {data.map((entry, index) => (
-                            <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.close >= entry.open ? '#0ecb81' : '#f6465d'} 
-                                opacity={0.5}
-                            />
-                        ))}
-                    </Bar>
-
-                    {/* Sharp Price Line */}
-                    <Area 
-                        yAxisId="price"
-                        type="linear" // Sharp lines (Binance style)
-                        dataKey="price" 
-                        stroke={mainColor} 
-                        strokeWidth={2}
-                        fill="url(#colorPrice)"
-                        activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: mainColor }}
-                        isAnimationActive={true}
-                    />
-                    
-                    {/* Dotted Reference Line (Previous Close equivalent) */}
-                    <ReferenceLine y={first} yAxisId="price" stroke="#848e9c" strokeDasharray="3 3" opacity={0.5} />
-                    
-                </ComposedChart>
-            </ResponsiveContainer>
-        </div>
+        <div 
+            ref={chartContainerRef} 
+            className="w-full h-[500px] relative"
+        />
     );
 };
 

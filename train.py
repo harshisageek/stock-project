@@ -5,10 +5,10 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pickle
 import os
-from dotenv import load_dotenv
+
 
 def main():
-    load_dotenv()
+
     parser = argparse.ArgumentParser(description='Universal Leak-Proof Training')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     args = parser.parse_args()

@@ -1,221 +1,197 @@
 import os
 import requests
-import time
-from datetime import datetime, timedelta
 import re
 import random
-from brain.sentiment.analyzer import analyze_sentiment
+import logging
+from datetime import datetime, timedelta
+# Use New Industry-Grade Engine
+from brain.analysis.sentiment import SentimentEngine
 
-# Trusted sources for simple weighting
+# Configure Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# --- CONFIGURATION ---
 TRUSTED_SOURCES = [
     "bloomberg.com", "reuters.com", "cnbc.com", "wsj.com", "ft.com", 
-    "finance.yahoo.com", "marketwatch.com", "seekingalpha.com", "investing.com"
+    "finance.yahoo.com", "marketwatch.com", "seekingalpha.com", "investing.com",
+    "barrons.com", "forbes.com", "businessinsider.com"
 ]
 
-def calculate_source_weight(url):
+# Track dead keys in memory (Global state for the running process)
+_BAD_KEYS = set()
+
+def calculate_source_weight(url: str) -> float:
     """
-    Get weight (0.5 to 1.5) based on domain authority.
+    Returns a weight multiplier (1.0 to 1.5) based on domain authority.
     """
     if not url: return 1.0
+    
+    url_lower = url.lower()
     for domain in TRUSTED_SOURCES:
-        if domain in url:
+        if domain in url_lower:
             return 1.5
     return 1.0
 
-def generate_mock_news(ticker):
+def generate_mock_news(ticker: str) -> tuple[list, float]:
     """
-    Generates fallback mock news for demonstration when API keys are exhausted.
+    Generates realistic mock news when API limits are hit.
     """
-    print(f"[GNews] All keys exhausted. Generating MOCK news for {ticker} to demonstrate UI.")
+    logger.warning(f"[Mock] Generating fallback news for {ticker} (API Limits/Errors).")
     
-    mock_templates = [
-        (f"{ticker} Reports Strong Q3 Earnings, Beating Estimates", 0.8, "Reuters"),
-        (f"Analysts Upgrade {ticker} to Buy Following Tech Event", 0.6, "Bloomberg"),
-        (f"Market Volatility Impacts {ticker} Share Price", -0.2, "CNBC"),
-        (f"{ticker} Announces New Strategic Partnership in AI Sector", 0.9, "TechCrunch"),
-        (f"Regulatory Scrutiny Increases for {ticker} in EU", -0.5, "WSJ"),
-        (f"Why {ticker} Could Be the Next Trillion Dollar Company", 0.7, "Motley Fool"),
-        (f"Institutions Are Loading Up on {ticker} Stock", 0.5, "Seeking Alpha"),
-        (f"Short Interest in {ticker} Spikes Amid Uncertainty", -0.4, "MarketWatch"),
-        (f"{ticker} CEO Discusses Future Roadmap in Interview", 0.3, "Forbes"),
-        (f"New Product Launch from {ticker} Receives Mixed Reviews", -0.1, "The Verge")
+    templates = [
+        ("Reports Strong Quarterly Earnings", 0.8, "Reuters"),
+        ("Analyst Upgrade: Buy Rating Issued", 0.7, "Bloomberg"),
+        ("Market Volatility Concerns Affect Price", -0.3, "CNBC"),
+        ("New Strategic Partnership Announced", 0.85, "Business Wire"),
+        ("Regulatory Challenges Ahead", -0.6, "WSJ"),
+        ("Why This Stock Is A Top Pick", 0.65, "Motley Fool"),
+        ("Institutional Investors Increase Stake", 0.5, "Seeking Alpha"),
+        ("Short Interest Spikes", -0.45, "MarketWatch"),
+        ("CEO Interview: Future Roadmap", 0.4, "Forbes"),
+        ("Tech Sector Sell-Off Impacts Stock", -0.5, "The Verge")
     ]
     
     mock_articles = []
     now = datetime.now()
     
-    for i, (title, base_sentiment, source) in enumerate(mock_templates):
-        # Add some randomness to sentiment
-        sentiment = base_sentiment + (random.random() * 0.1 - 0.05)
+    for i, (headline_suffix, base_score, source) in enumerate(templates):
+        # Randomize slightly
+        sentiment = base_score + (random.uniform(-0.1, 0.1))
+        # Dampen mock scores too for consistency
+        sentiment = sentiment * 0.95
+        
+        title = f"{ticker} {headline_suffix}"
         
         mock_articles.append({
             "title": title,
-            "link": f"https://example.com/mock/{ticker}/{i}",
-            "image": "https://images.unsplash.com/photo-1611974765270-ca1258634369?q=80&w=500&auto=format&fit=crop",
+            "link": f"https://mock-news.com/{ticker}/{i}",
+            "image": "https://via.placeholder.com/150?text=News",
             "publisher": source,
-            "published": (now - timedelta(hours=i*2)).strftime('%Y-%m-%d'),
+            "published": (now - timedelta(hours=i*4)).strftime('%Y-%m-%d'),
             "sentiment": round(sentiment, 4),
             "debug": {
-                "source": "Mock/Demo",
-                "content_source": "fallback_generator",
-                "key_used": "None",
+                "source": "Mock/Fallback",
                 "weight": 1.0,
-                "raw_title_score": round(base_sentiment, 4)
+                "raw_score": round(base_score, 4)
             }
         })
         
-    return mock_articles, 0.45 # Return positive avg sentiment
+    # Mock Average Sentiment
+    avg_sentiment = 0.35
+    return mock_articles, avg_sentiment
 
-def fetch_gnews(ticker, company_name=None):
+def fetch_gnews(ticker: str, company_name: str = None) -> tuple[list, float]:
     """
-    Fetches news using GNews API with Dual-Key Rotation.
-    Analyzes sentiment primarily based on TITLE (60%) and DESCRIPTION (40%).
-    Ignores truncated content to avoid dilution.
+    Fetches news from GNews API with strict credit conservation.
+    Uses new SentimentEngine.
     """
-    keys = [
-        os.getenv("GNEWS_API_KEY1"),
-        os.getenv("GNEWS_API_KEY2")
-    ]
+    global _BAD_KEYS
     
-    # Filter out None keys
-    keys = [k for k in keys if k]
+    keys = [os.getenv("GNEWS_API_KEY1"), os.getenv("GNEWS_API_KEY2")]
+    active_keys = [k for k in keys if k and k not in _BAD_KEYS]
     
-    if not keys:
-        print("[GNews] No API Keys found!")
+    if not active_keys:
+        logger.error("No active GNews keys available.")
         return generate_mock_news(ticker)
+
+    # Search Query Optimization
+    if company_name:
+        clean_name = re.sub(r' (Inc\.?|Corp\.?|Corporation|Ltd\.?|PLC|S\.A\.|AG)\b', '', company_name, flags=re.IGNORECASE).strip()
+        search_query = f'"{clean_name}" OR "{ticker} stock"'
+    else:
+        if len(ticker) <= 4:
+            search_query = f'"{ticker} stock"'
+        else:
+            search_query = ticker
 
     valid_articles = []
     seen_titles = set()
     now = datetime.now()
     
-    total_weighted_score = 0.0
-    total_weight = 0.0
-    
-    # Fetch Loop: Keep fetching pages until we have 20 valid articles or hit Page 4
-    current_key_idx = 0
-    max_pages = 4 # Safety limit to prevent burning credits
     target_count = 20
+    max_pages = 5 # Increased to 5 to ensure 20 valid articles after strict filtering
     
-    keys_exhausted = False
+    current_key_idx = 0
     
     for page in range(1, max_pages + 1):
         if len(valid_articles) >= target_count:
             break
             
-        print(f"[GNews] Fetching Page {page}... (Current Valid: {len(valid_articles)})")
+        response_data = None
         
-        # If we ran out of keys, stop
-        if current_key_idx >= len(keys):
-            keys_exhausted = True
-            break
-            
-        page_articles = []
-        success = False
-        
-        # Try current key, if fail, rotate
-        while current_key_idx < len(keys):
-            key = keys[current_key_idx]
+        # Retry loop for keys
+        while current_key_idx < len(active_keys):
+            api_key = active_keys[current_key_idx]
             try:
-                # Refine Search Query to avoid "Spy movies" or "Move dance"
-                search_query = ticker
+                # Explicit max=10 (Free Tier Limit)
+                url = f"https://gnews.io/api/v4/search?q={search_query}&lang=en&sortby=publishedAt&token={api_key}&page={page}&max=10"
                 
-                # Priority: Use Company Name if available
-                if company_name:
-                    # Clean up common suffixes
-                    clean_name = re.sub(r' (Inc\.?|Corp\.?|Corporation|Ltd\.?|PLC|S\.A\.|AG|L\.P\.|Holdings)\b', '', company_name, flags=re.IGNORECASE).strip()
-                    search_query = f"{ticker} {clean_name} stock"
+                logger.info(f"Fetching GNews Page {page}...")
+                res = requests.get(url, timeout=10)
                 
-                # Fallback: Smart Guessing
-                else:
-                    # Crypto
-                    if "USD" in ticker:
-                        search_query = ticker.replace("-", " ")
-                    # ETFs
-                    elif ticker in ["SPY", "QQQ", "IWM", "DIA", "VXX", "IVV", "VOO"]:
-                        search_query = f"{ticker} ETF"
-                    # Ambiguous / Short Tickers
-                    elif len(ticker) <= 4 or ticker in ["MOVE", "BEST", "FAST", "NOW", "LOVE", "CASH", "LUV", "MAIN", "PLAY"]:
-                        search_query = f"{ticker} stock"
-                
-                # Encode spaces? Requests handles it, but f-string is safe
-                url = f"https://gnews.io/api/v4/search?q={search_query}&lang=en&sortby=publishedAt&token={key}&page={page}"
-                
-                response = requests.get(url, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if "articles" in data:
-                        page_articles = data["articles"]
-                    success = True
+                if res.status_code == 200:
+                    response_data = res.json()
                     break 
-                    
-                elif response.status_code == 429: # Rate Limit
-                    print(f"[GNews] Key #{current_key_idx+1} Rate Limited. Switching...")
+                elif res.status_code in [403, 429]:
+                    logger.warning(f"Key exhausted. Switching.")
+                    _BAD_KEYS.add(api_key)
                     current_key_idx += 1 
-                    continue
-                elif response.status_code == 403: # Quota
-                    print(f"[GNews] Key #{current_key_idx+1} Forbidden (Quota). Switching...")
-                    current_key_idx += 1
-                    continue
                 else:
-                    print(f"[GNews] Key #{current_key_idx+1} Error: {response.status_code}")
-                    current_key_idx += 1
-                    continue
-                    
+                    logger.error(f"GNews Error {res.status_code}: {res.text}")
+                    current_key_idx += 1 
             except Exception as e:
-                print(f"[GNews] Exception: {e}")
+                logger.error(f"Network Error: {e}")
                 current_key_idx += 1
-                continue
         
-        if not success:
-            print(f"[GNews] Failed to fetch page {page}. Stopping.")
-            if current_key_idx >= len(keys):
-                keys_exhausted = True
+        if not response_data or "articles" not in response_data:
             break
             
-        # Process this page's articles immediately to check validity
-        for article in page_articles:
+        articles = response_data.get("articles", [])
+        if not articles:
+            logger.info("No more articles found.")
+            break
+            
+        # Process Batch
+        # We process title+description.
+        # To optimize, we could batch analyze, but the loop logic filters duplicates first.
+        # Let's collect texts to analyze in batch for this page.
+        
+        candidates = []
+        for art in articles:
+            title = art.get('title', '')
+            if not title or title in seen_titles:
+                continue
+            candidates.append(art)
+            seen_titles.add(title)
+            
+        if not candidates:
+            continue
+            
+        # Batch Analysis
+        texts = [f"{c.get('title', '')}. {c.get('description', '') or ''}" for c in candidates]
+        scores = SentimentEngine.analyze_batch(texts)
+        
+        for art, score in zip(candidates, scores):
             if len(valid_articles) >= target_count:
                 break
                 
-            title = article.get('title', '')
-            if title in seen_titles:
-                continue
-            
-            # 1. Analyze Sentiment
-            desc = article.get('description', '')
-            score_title = analyze_sentiment(title)
-            
-            # Weighted Average: Title (50%), Desc (50%) - Reduced Title influence
-            if desc and len(desc) > 10:
-                 score_desc = analyze_sentiment(desc)
-                 sentiment_score = (score_title * 0.5) + (score_desc * 0.5)
-            else:
-                 sentiment_score = score_title
-            
-            # Dampening: Pull towards neutral to avoid extreme 0.99s
-            sentiment_score = sentiment_score * 0.85
-
-            # 2. FILTER NEUTRALS (Strict)
-            # User wants to discard 0.00 scores completely
-            if abs(sentiment_score) < 0.05:
-                # Debug print to see what's being dropped
-                print(f"[News Filter] Dropping '{title}' (Score: {sentiment_score:.4f})")
+            # Filter: Reject weak signals (using the new damped score)
+            # Damped score of 0.05 is still very weak.
+            if abs(score) < 0.05:
                 continue
                 
-            seen_titles.add(title)
-            
-            # 3. Add to List
-            source_url = article.get('url', '')
+            # Weighting
+            source_url = art.get('url', '')
             source_weight = calculate_source_weight(source_url)
             
             # Recency
             try:
-                pub_date = article.get('publishedAt')
+                pub_date = art.get('publishedAt')
                 if pub_date:
                     dt = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%SZ")
                     hours_old = (now - dt).total_seconds() / 3600
-                    recency_weight = max(0.5, 1.0 - (hours_old / 96.0))
+                    recency_weight = max(0.5, 1.0 - (hours_old / 72.0))
                     pub_str = dt.strftime('%Y-%m-%d')
                 else:
                     recency_weight = 1.0
@@ -223,38 +199,40 @@ def fetch_gnews(ticker, company_name=None):
             except:
                 recency_weight = 1.0
                 pub_str = now.strftime('%Y-%m-%d')
-                
+
             final_weight = source_weight * recency_weight
-            
-            total_weighted_score += (sentiment_score * final_weight)
-            total_weight += final_weight
-            
+
             valid_articles.append({
-                "title": title,
+                "title": art.get('title', ''),
                 "link": source_url,
-                "image": article.get('image', ''),
-                "publisher": article.get('source', {}).get('name', 'GNews'),
+                "image": art.get('image', ''),
+                "publisher": art.get('source', {}).get('name', 'GNews'),
                 "published": pub_str,
-                "sentiment": round(sentiment_score, 4),
+                "sentiment": score, # Already rounded/damped by engine
                 "debug": {
                     "source": "GNews",
-                    "content_source": "filtered_loop",
-                    "key_used": "Multi-Page",
                     "weight": round(final_weight, 2),
-                    "raw_title_score": round(score_title, 4)
+                    "raw_score": score
                 }
             })
-    
-    # Check if we should fallback to mock data
-    if len(valid_articles) == 0 and keys_exhausted:
-        print("[GNews] CRITICAL: All keys exhausted and no articles found. Falling back to MOCK data.")
-        return generate_mock_news(ticker)
 
-    if len(valid_articles) < target_count:
-        print(f"[GNews] Warning: Only found {len(valid_articles)} valid articles after {max_pages} pages.")
+    # Final Aggregation
+    if not valid_articles:
+        if not active_keys or current_key_idx >= len(active_keys):
+            return generate_mock_news(ticker)
+        return [], 0.0
+
+    # Weighted Average
+    total_score = 0.0
+    total_weight = 0.0
+    
+    for a in valid_articles:
+        w = a['debug']['weight']
+        s = a['sentiment']
+        total_score += (s * w)
+        total_weight += w
         
-    print(f"[GNews] Final Valid Articles: {len(valid_articles)}")
+    final_sentiment = total_score / total_weight if total_weight > 0 else 0.0
     
-    final_sentiment = total_weighted_score / total_weight if total_weight > 0 else 0.0
-    
+    logger.info(f"Final: {len(valid_articles)} articles, Sentiment: {final_sentiment:.4f}")
     return valid_articles, final_sentiment

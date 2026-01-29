@@ -4,6 +4,7 @@ import Home from './components/Home';
 import Dashboard from './components/Dashboard';
 import AnalysisLanding from './components/AnalysisLanding';
 import WatchlistPage from './components/WatchlistPage';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const API_URL = 'http://127.0.0.1:5000';
 
@@ -103,7 +104,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-secondary)] text-[var(--text-primary)] font-sans transition-colors duration-200">
+    <div className="h-screen flex flex-col bg-[#161a1e] text-[#eaecef] font-sans overflow-hidden">
         
         {/* Navigation */}
         <Navbar 
@@ -115,13 +116,13 @@ function App() {
         />
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className={`flex-1 overflow-y-auto ${view === 'dashboard' ? 'p-0' : 'max-w-7xl mx-auto px-4 py-8 w-full'}`}>
             
             {/* Error Banner */}
             {error && (
-                <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <strong className="font-bold">Error: </strong>
-                    <span className="block sm:inline">{error}</span>
+                <div className="bg-[#f6465d]/20 border border-[#f6465d] text-[#f6465d] px-4 py-2 text-sm text-center">
+                    <span className="font-bold">Error: </span>
+                    <span>{error}</span>
                 </div>
             )}
 
@@ -137,21 +138,25 @@ function App() {
             {view === 'dashboard' && (
                 <>
                     {!stockData && loading ? (
-                        <div className="flex flex-col items-center justify-center min-h-[70vh] w-full">
-                            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[var(--accent-color)] mb-6"></div>
-                            <h2 className="text-xl font-bold animate-pulse tracking-wide" style={{ color: 'var(--text-primary)' }}>
-                                Analyzing Market Data for {ticker}...
+                        <div className="flex flex-col items-center justify-center h-full w-full">
+                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#f0b90b] mb-4"></div>
+                            <h2 className="text-lg font-mono text-[#848e9c]">
+                                Processing Market Data: {ticker}...
                             </h2>
                         </div>
                     ) : (
                         stockData ? (
-                            <Dashboard 
-                                data={stockData} 
-                                ticker={ticker} 
-                                onRangeChange={handleRangeChange} 
-                                onRefresh={handleRefresh}
-                                isLoading={loading} 
-                            />
+                            <div className="h-full">
+                                <ErrorBoundary>
+                                    <Dashboard 
+                                        data={stockData} 
+                                        ticker={ticker} 
+                                        onRangeChange={handleRangeChange} 
+                                        onRefresh={handleRefresh}
+                                        isLoading={loading} 
+                                    />
+                                </ErrorBoundary>
+                            </div>
                         ) : (
                             <AnalysisLanding onSearch={handleSearch} />
                         )

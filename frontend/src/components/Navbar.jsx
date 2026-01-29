@@ -34,12 +34,12 @@ const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
         <nav className="sticky top-0 z-50 border-b backdrop-blur-md transition-all duration-200"
             style={{ 
                 backgroundColor: 'rgba(var(--bg-card-rgb), 0.8)', 
-                background: isDark ? 'rgba(30, 35, 41, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                borderColor: 'var(--border-color)' 
+                background: isDark ? '#1e2329' : 'rgba(255, 255, 255, 0.95)',
+                borderColor: '#2b3139' 
             }}
         >
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center h-18 py-3">
+            <div className="w-full px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between items-center h-16 py-2">
                     
                     {/* Left: Brand & Logo */}
                     <div className="flex-shrink-0 flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>

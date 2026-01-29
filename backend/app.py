@@ -15,6 +15,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import time
 from datetime import datetime, timedelta
+import pandas as pd # Added for brain service logic
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -24,6 +25,12 @@ from brain.quant import QuantEngine
 # Import new GNews fetcher
 from brain.sentiment.news import fetch_gnews
 from backend.database import NewsDatabase
+
+# --- NEW BRAIN ARCHITECTURE ---
+from brain.service import BrainService
+from brain.core.types import StockDataPoint, Article
+brain_service = BrainService()
+# ------------------------------
 
 from dotenv import load_dotenv
 
@@ -121,24 +128,54 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
     
     should_fetch_live = False
     
-    if cached_news and len(cached_news) >= 5: # Lower threshold to 5 for now
-        print(f"Found {len(cached_news)} articles in DB. (Cache Hit)")
+    # Check if DB has enough valid data
+    use_db_cache = False
+    
+    if cached_news and len(cached_news) >= 10:
+        print(f"Found {len(cached_news)} articles in DB. Filtering...")
+        valid_cached_articles = []
         for article in cached_news:
-            analyzed_news.append({
-                "title": article['title'],
-                "published": article['published'],
-                "sentiment": article['sentiment_score'],
-                "link": article['link'],
-                "publisher": article['source'],
-                "debug": article['debug_metadata'] or {}
-            })
-            
-        # Trigger background update to keep data fresh (optional, maybe only if old?)
-        # For now, let's trust the DB if we hit it, unless user forces refresh.
+            if abs(article['sentiment_score']) >= 0.05:
+                valid_cached_articles.append({
+                    "title": article['title'],
+                    "published": article['published'],
+                    "sentiment": article['sentiment_score'],
+                    "link": article['link'],
+                    "publisher": article['source'],
+                    "debug": article['debug_metadata'] or {}
+                })
         
-    else:
-        # DB Empty or Force Refresh - Must Fetch Live (Blocking)
-        print("DB Empty or Forced. Live scraping (Blocking)...")
+        # Check Recency
+        is_stale = False
+        if valid_cached_articles:
+            try:
+                # Assuming first is newest (DB sorts desc)
+                newest_date_str = valid_cached_articles[0]['published']
+                # Handle potential formats if legacy data exists
+                try:
+                    newest_date = datetime.strptime(newest_date_str, '%Y-%m-%d')
+                except ValueError:
+                    # Fallback for TZ format if exists
+                    newest_date = datetime.strptime(newest_date_str.split('T')[0], '%Y-%m-%d')
+                    
+                age_days = (datetime.now() - newest_date).days
+                if age_days > 1:
+                    print(f"DB Cache Stale: Newest article from {newest_date_str} ({age_days} days old).")
+                    is_stale = True
+            except Exception as e:
+                print(f"Date parsing warning: {e}")
+
+        if len(valid_cached_articles) >= 5 and not is_stale:
+            print(f"DB Cache Hit: {len(valid_cached_articles)} valid articles.")
+            analyzed_news = valid_cached_articles
+            use_db_cache = True
+        else:
+            reason = "Stale" if is_stale else "Weak"
+            print(f"DB Cache {reason}: Only {len(valid_cached_articles)} valid articles. Refetching.")
+
+    if not use_db_cache:
+        # DB Empty, Weak, or Force Refresh - Must Fetch Live (Blocking)
+        print("Live scraping (Blocking)...")
         
         # Pass company name to refine search
         analyzed_news, _ = fetch_gnews(ticker, company_name)
@@ -161,10 +198,17 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
 
     # 3. Fetch Stock Data (Twelve Data)
     range_map = {"1W": "7", "1M": "30", "3M": "90", "6M": "180", "1Y": "365", "MAX": "5000"}
-    output_size = range_map.get(range_str, "7")
+    
+    # Enforce min 300 data points for Neural Network
+    requested_size_str = range_map.get(range_str, "7")
+    try:
+        req_int = int(requested_size_str)
+        fetch_size = max(req_int, 300)
+    except:
+        fetch_size = 5000; req_int = 5000
 
     url = "https://api.twelvedata.com/time_series"
-    params = {"symbol": ticker, "interval": "1day", "outputsize": output_size, "apikey": TWELVE_DATA_KEY}
+    params = {"symbol": ticker, "interval": "1day", "outputsize": str(fetch_size), "apikey": TWELVE_DATA_KEY}
     
     response = requests.get(url, params=params)
     data = response.json()
@@ -172,7 +216,7 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
     if "values" not in data:
         raise ValueError(f"Twelve Data Error: {data.get('message', 'Unknown error')}")
 
-    graph_data = [{
+    full_history_data = [{
         "date": d["datetime"],
         "open": float(d["open"]),
         "high": float(d["high"]),
@@ -182,33 +226,76 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
         "price": float(d["close"]),
         "sentiment": round(current_sentiment, 4)
     } for d in data["values"]]
-    graph_data.reverse() # Oldest first
-
-    # 3. Quant Brain Analysis (Rule-Based)
-    engine = QuantEngine(graph_data)
-    quant_result = engine.calculate_score(current_sentiment)
+    full_history_data.reverse() # Oldest first
     
-    # 4. Neural Network Analysis (AI Prediction) via Manager
-    neural_signal, neural_confidence = model_manager.predict_sentiment(graph_data)
+    # Slice for Graph (requested range)
+    if req_int < len(full_history_data):
+        graph_data = full_history_data[-req_int:]
+    else:
+        graph_data = full_history_data
 
-    # Derive Combined Signal
-    score = quant_result['final_score']
-    
-    # Quant Signals
-    if score >= 60: quant_signal = "Strong Buy"
-    elif score >= 20: quant_signal = "Buy"
-    elif score >= -20: quant_signal = "Neutral"
-    elif score >= -60: quant_signal = "Sell"
-    else: quant_signal = "Strong Sell"
+    # 3. New Brain Architecture Analysis
+    try:
+        # Convert to Pydantic
+        p_history = [
+            StockDataPoint(
+                datetime=d["date"], 
+                open=d["open"], 
+                high=d["high"], 
+                low=d["low"], 
+                close=d["close"], 
+                volume=d["volume"]
+            ) for d in full_history_data
+        ]
         
-    quant_result['signal'] = quant_signal
-    
-    # Add Neural Info
-    quant_result['neural_analysis'] = {
-        "signal": neural_signal,
-        "confidence": round(neural_confidence, 4),
-        "model": "Hybrid LSTM v1 (Optimized)"
-    }
+        p_news = [
+            Article(
+                title=n["title"],
+                link=n["link"],
+                published=n["published"],
+                publisher=n["publisher"],
+                sentiment_score=n["sentiment"],
+                metadata=n["debug"]
+            ) for n in analyzed_news
+        ]
+
+        analysis = brain_service.analyze_ticker(ticker, p_history, current_sentiment, p_news)
+        
+        # Adapter for Legacy Frontend
+        tech_vals = analysis.components["technical"]["values"]
+        tech_scores = analysis.components["technical"]["scores"]
+        macd_vals = tech_vals.get("macd", {}) or {}
+        
+        quant_result = {
+            "final_score": analysis.final_score,
+            "signal": analysis.signal.value,
+            "breakdown": {
+                "rsi_val": round(tech_vals["rsi"], 2) if tech_vals.get("rsi") is not None and not pd.isna(tech_vals["rsi"]) else None,
+                "rsi_normalized": round(tech_scores["rsi"], 2),
+                "sma_val": round(tech_vals["sma"], 2) if tech_vals.get("sma") is not None and not pd.isna(tech_vals["sma"]) else None,
+                "trend_normalized": round(tech_scores["trend"], 2),
+                "current_price": tech_vals["current_price"],
+                "sentiment_input": analysis.sentiment_score,
+                "sentiment_normalized": analysis.sentiment_score * 100,
+                "macd": {
+                    "macd_line": round(macd_vals.get("macd"), 4) if macd_vals.get("macd") is not None and not pd.isna(macd_vals.get("macd")) else None,
+                    "signal_line": round(macd_vals.get("signal"), 4) if macd_vals.get("signal") is not None and not pd.isna(macd_vals.get("signal")) else None,
+                    "histogram": round(macd_vals.get("hist"), 4) if macd_vals.get("hist") is not None and not pd.isna(macd_vals.get("hist")) else None
+                }
+            },
+            "neural_analysis": {
+                "signal": analysis.components["neural"]["signal"],
+                "confidence": round(analysis.components["neural"]["confidence"], 4),
+                "model": "Hybrid LSTM v2 (Industry Grade)"
+            },
+            "weights": analysis.components["weights"],
+            "deep_insight": analysis.components.get("deep_insight", {}),
+            "expert_opinion": analysis.components.get("expert_opinion", {})
+        }
+    except Exception as e:
+        print(f"Brain Service Error: {e}")
+        # Fallback or re-raise? Re-raising to trigger circuit breaker is safer
+        raise e
     
     # Debug Stats
     scraping_stats = {
@@ -249,6 +336,10 @@ def analyze():
     cached_data = get_cached_data(cache_key)
     
     if cached_data and not force_refresh:
+        # Hotfix: Filter cached data on the fly to remove old 0.00 records
+        if 'news' in cached_data:
+            cached_data['news'] = [n for n in cached_data['news'] if abs(n['sentiment']) >= 0.05]
+            
         return jsonify({
             **cached_data,
             "cached": True
@@ -536,7 +627,7 @@ def update_news_cache():
     
     try:
         articles, _ = fetch_gnews("stock market")
-        top_news = articles[:15]
+        top_news = articles[:20]
         
         if top_news:
             news_cache["data"] = top_news

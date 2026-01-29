@@ -1,44 +1,28 @@
 import { useState, useEffect } from 'react';
 import StockChart from './StockChart';
 import StatsGrid from './StatsGrid';
-import { RefreshCw, ArrowUp, ArrowDown, ExternalLink, Star } from 'lucide-react';
+import { RefreshCw, ArrowUp, ArrowDown, Star, Activity, Zap, Shield, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { addToWatchlist, removeFromWatchlist, getWatchlist } from '../supabase';
 
 const TimeSelector = ({ activeRange, onSelect }) => {
     const ranges = ["1W", "1M", "3M", "6M", "1Y", "MAX"];
     return (
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-md">
+        <div className="flex gap-1 bg-[#2b3139] p-0.5 rounded text-[10px]">
             {ranges.map((range) => (
                 <button
                     key={range}
                     onClick={() => onSelect(range)}
-                    className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                    className={`px-2 py-0.5 font-medium rounded transition-colors ${
                         activeRange === range
-                        ? 'bg-white dark:bg-gray-600 shadow text-black dark:text-white'
-                        : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
+                        ? 'bg-[#848e9c] text-[#161a1e]'
+                        : 'text-[#848e9c] hover:text-white'
                     }`}
                 >
                     {range}
                 </button>
             ))}
         </div>
-    );
-};
-
-const SentimentBadge = ({ score }) => {
-    let color = 'bg-gray-500';
-    let label = 'Neutral';
-    
-    if (score >= 0.5) { color = 'bg-[#0ecb81]'; label = 'Strong Buy'; }
-    else if (score >= 0.2) { color = 'bg-green-500'; label = 'Buy'; }
-    else if (score <= -0.5) { color = 'bg-[#f6465d]'; label = 'Strong Sell'; }
-    else if (score <= -0.2) { color = 'bg-red-500'; label = 'Sell'; }
-
-    return (
-        <span className={`${color} text-white text-xs font-bold px-2 py-1 rounded uppercase`}>
-            {label} ({score})
-        </span>
     );
 };
 
@@ -50,6 +34,7 @@ function Dashboard({ data, ticker, onRangeChange, onRefresh, isLoading }) {
     const priceChange = latest.price - prev.price;
     const percentChange = (priceChange / prev.price) * 100;
     const isUp = priceChange >= 0;
+    const colorClass = isUp ? 'text-[#0ecb81]' : 'text-[#f6465d]';
 
     const [timeRange, setTimeRange] = useState("1W");
     
@@ -70,7 +55,7 @@ function Dashboard({ data, ticker, onRangeChange, onRefresh, isLoading }) {
     }, [user, ticker]);
 
     const toggleWatchlist = async () => {
-        if (!user) return; // Should show auth modal ideally
+        if (!user) return; 
         setWLoading(true);
         if (isWatchlisted) {
             await removeFromWatchlist(user.id, ticker);
@@ -88,124 +73,253 @@ function Dashboard({ data, ticker, onRangeChange, onRefresh, isLoading }) {
         if (onRangeChange) onRangeChange(range);
     };
 
+    // Parse Quant Data
+    const deepInsight = quant_analysis?.deep_insight || {};
+    const strategy = deepInsight.strategy || "Neutral";
+    const support = deepInsight.support_level || 0;
+    const resistance = deepInsight.resistance_level || 0;
+    const instFlow = deepInsight.institutional_flow || "Neutral";
+    
+    const neural = quant_analysis?.neural_analysis || {};
+    const confidence = neural.confidence || 0;
+
+    const breakdown = quant_analysis?.breakdown || {};
+
+    const experts = quant_analysis?.expert_opinion || {};
+    const xgb = experts.xgboost || { signal: "Neutral", probability: 0 };
+    const lstm = experts.lstm || { signal: "Neutral", confidence: 0 };
+    const sentimentExpert = experts.sentiment || { label: "Neutral", score: 0 };
+
     return (
-        <div className="animate-fade-in space-y-4">
-            {/* Header Strip */}
-            <div className="card flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{ticker}</h1>
-                        <span className="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono" style={{ color: 'var(--text-secondary)' }}>
-                            Stock / USD
-                        </span>
-                        {/* Star Button */}
-                        {user && (
-                            <button 
-                                onClick={toggleWatchlist} 
-                                disabled={wLoading}
-                                className={`p-1.5 rounded-full transition-all ${isWatchlisted ? 'bg-[var(--accent-color)] text-black' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-[var(--accent-color)]'}`}
-                                title={isWatchlisted ? "Remove from Watchlist" : "Add to Watchlist"}
-                            >
-                                <Star className={`w-4 h-4 ${isWatchlisted ? 'fill-black' : ''} ${wLoading ? 'animate-pulse' : ''}`} />
+        <div className="flex flex-col h-full bg-[#161a1e] text-[#eaecef] font-sans">
+            {/* 1. Header Bar (Binance Style) */}
+            <div className="flex items-center justify-between px-4 py-3 bg-[#1e2329] border-b border-[#2b3139]">
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-xl font-bold text-white tracking-wide">{ticker}</h1>
+                        <span className="text-xs text-[#848e9c]">/USDT</span>
+                         {user && (
+                            <button onClick={toggleWatchlist} disabled={wLoading}>
+                                <Star className={`w-4 h-4 ${isWatchlisted ? 'fill-[#f0b90b] text-[#f0b90b]' : 'text-[#848e9c]'}`} />
                             </button>
                         )}
                     </div>
-                    <div className="flex items-baseline gap-3 mt-1">
-                        <span className={`text-3xl font-bold ${isUp ? 'text-[var(--color-up)]' : 'text-[var(--color-down)]'}`}>
-                            ${latest.price.toFixed(2)}
+                    
+                    <div className="flex flex-col">
+                        <span className={`text-lg font-mono font-medium ${colorClass}`}>
+                            {latest.price.toFixed(2)}
                         </span>
-                        <span className={`flex items-center text-sm font-medium ${isUp ? 'text-[var(--color-up)]' : 'text-[var(--color-down)]'}`}>
-                            {isUp ? <ArrowUp className="w-3 h-3 mr-1" /> : <ArrowDown className="w-3 h-3 mr-1" />}
-                            {Math.abs(priceChange).toFixed(2)} ({Math.abs(percentChange).toFixed(2)}%)
+                        <span className="text-xs text-[#848e9c]">Price</span>
+                    </div>
+
+                    <div className="flex flex-col">
+                        <span className={`text-sm font-medium ${colorClass}`}>
+                            {isUp ? '+' : ''}{priceChange.toFixed(2)} ({percentChange.toFixed(2)}%)
                         </span>
+                        <span className="text-xs text-[#848e9c]">24h Change</span>
+                    </div>
+
+                    <div className="hidden md:flex flex-col">
+                        <span className="text-sm font-medium text-white">{strategy}</span>
+                        <span className="text-xs text-[#848e9c]">AI Strategy</span>
                     </div>
                 </div>
-                
-                <div className="flex items-center gap-4">
-                    <div className="text-right hidden sm:block">
-                        <div className="text-xs text-gray-500 uppercase">Sentiment</div>
-                        <SentimentBadge score={quant_analysis?.final_score || 0} />
-                    </div>
-                     <div className="text-right hidden sm:block">
-                        <div className="text-xs text-gray-500 uppercase">AI Confidence</div>
-                        <div className="text-sm font-bold text-[var(--accent-color)]">
-                            {(quant_analysis?.neural_analysis?.confidence * 100).toFixed(1)}%
-                        </div>
-                    </div>
+
+                <div className="flex items-center gap-3">
+                     <button onClick={onRefresh} className="p-2 hover:bg-[#2b3139] rounded transition-colors text-[#848e9c]">
+                        <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* 2. Main Grid */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-1 p-1">
                 
-                {/* Chart Section (2/3) */}
-                <div className="lg:col-span-2 card min-h-[500px] flex flex-col">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>Price Chart</h3>
-                        <TimeSelector activeRange={timeRange} onSelect={handleRangeSelect} />
-                    </div>
-                    <div className="flex-1 bg-gray-50 dark:bg-[#161a1e] rounded-lg border border-dashed dark:border-gray-800 p-2 relative">
-                         {isLoading && (
-                            <div className="absolute inset-0 z-10 bg-white/50 dark:bg-black/50 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent-color)]"></div>
+                {/* Left: Chart (Takes 3 cols) */}
+                <div className="lg:col-span-3 flex flex-col gap-1">
+                    {/* Chart Container */}
+                    <div className="bg-[#1e2329] rounded p-1 flex-1 min-h-[500px] relative">
+                        <div className="absolute top-2 right-2 z-10">
+                            <TimeSelector activeRange={timeRange} onSelect={handleRangeSelect} />
+                        </div>
+                        {isLoading && (
+                            <div className="absolute inset-0 z-20 bg-[#161a1e]/50 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#f0b90b]"></div>
                             </div>
                         )}
                         <StockChart data={graph_data} />
                     </div>
+                    
+                    {/* Bottom Stats / News */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1 h-[300px]">
+                        <div className="bg-[#1e2329] rounded p-3 overflow-y-auto custom-scrollbar">
+                            <h3 className="text-sm font-bold text-[#eaecef] mb-3 sticky top-0 bg-[#1e2329]">Latest News</h3>
+                            <div className="space-y-2">
+                                {news && news.length > 0 ? (
+                                    news.map((item, idx) => (
+                                        <div key={idx} className="group cursor-pointer hover:bg-[#2b3139] p-2 rounded transition-colors">
+                                            <div className="flex justify-between items-start">
+                                                <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[#eaecef] hover:text-[#f0b90b] line-clamp-2">
+                                                    {item.title}
+                                                </a>
+                                            </div>
+                                            <div className="flex justify-between mt-1 items-center">
+                                                <span className="text-[10px] text-[#848e9c]">{item.publisher}</span>
+                                                <span className={`text-[9px] px-1 rounded ${item.sentiment > 0 ? 'text-[#0ecb81] bg-[#0ecb81]/10' : 'text-[#f6465d] bg-[#f6465d]/10'}`}>
+                                                    {item.sentiment > 0 ? 'BULLISH' : 'BEARISH'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-xs text-[#848e9c] text-center mt-10">No news available.</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="bg-[#1e2329] rounded p-3">
+                             <h3 className="text-sm font-bold text-[#eaecef] mb-3">Market Stats</h3>
+                             <StatsGrid data={graph_data} />
+                        </div>
+                    </div>
                 </div>
 
-                {/* Right Column: Stats & News (1/3) */}
-                <div className="space-y-4">
-                    {/* Market Stats */}
-                    <div className="card">
-                        <h3 className="font-semibold mb-3 border-b pb-2 dark:border-gray-700" style={{ color: 'var(--text-primary)' }}>Market Stats</h3>
-                        <StatsGrid data={graph_data} />
-                    </div>
+                {/* Right: Quant Insight (Order Book Style) */}
+                <div className="bg-[#1e2329] rounded p-4 flex flex-col gap-6 overflow-y-auto">
+                    
+                    <div>
+                        <h2 className="text-[#f0b90b] text-sm font-bold uppercase tracking-wider mb-4 border-b border-[#2b3139] pb-2">
+                            Deep Quant Insight
+                        </h2>
 
-                    {/* AI Insight Box */}
-                    <div className="card bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-purple-900/20 border-blue-100 dark:border-blue-800">
-                        <h3 className="text-sm font-bold text-blue-600 dark:text-blue-400 mb-2 uppercase tracking-wide">
-                            AI Signal
-                        </h3>
-                        <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                            {quant_analysis?.signal || "Neutral"}
-                        </p>
-                        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                            Based on {news?.length || 0} analyzed news points and technical indicators.
-                        </p>
-                    </div>
-
-                    {/* News Feed (Compact) */}
-                    <div className="card flex-1 max-h-[400px] flex flex-col">
-                        <div className="flex justify-between items-center mb-3 pb-2 border-b dark:border-gray-700">
-                            <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Latest News</h3>
-                            <button onClick={onRefresh} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                            </button>
-                        </div>
-                        <div className="overflow-y-auto custom-scrollbar flex-1 space-y-3 pr-1">
-                            {news && news.length > 0 ? (
-                                news.map((item, idx) => (
-                                    <div key={idx} className="group cursor-pointer">
-                                        <div className="flex justify-between items-start">
-                                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-[var(--accent-color)] transition-colors line-clamp-2" style={{ color: 'var(--text-primary)' }}>
-                                                {item.title}
-                                            </a>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ml-2 whitespace-nowrap ${item.sentiment > 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                                {item.sentiment.toFixed(2)}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between mt-1">
-                                            <span className="text-[10px] text-gray-400">{item.publisher}</span>
-                                            <span className="text-[10px] text-gray-500">{new Date(item.published).toLocaleDateString()}</span>
-                                        </div>
+                        <div className="space-y-4">
+                            {/* Signal Card */}
+                            <div className="bg-[#2b3139]/50 p-3 rounded border-l-2 border-[#f0b90b]">
+                                <div className="text-xs text-[#848e9c] mb-1">Primary Signal</div>
+                                <div className="text-xl font-bold text-white">{quant_analysis?.signal || "NEUTRAL"}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <div className="h-1.5 flex-1 bg-[#161a1e] rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-[#f0b90b]" 
+                                            style={{ width: `${confidence * 100}%` }}
+                                        ></div>
                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-center py-4 text-gray-500">No news available.</p>
-                            )}
+                                    <span className="text-xs text-[#f0b90b]">{(confidence * 100).toFixed(0)}% Conf.</span>
+                                </div>
+                            </div>
+
+                            {/* Strategy */}
+                            <div className="flex items-start gap-3">
+                                <Activity className="w-5 h-5 text-[#848e9c] mt-0.5" />
+                                <div>
+                                    <div className="text-xs text-[#848e9c]">Detected Strategy</div>
+                                    <div className="text-sm font-medium text-white">{strategy}</div>
+                                </div>
+                            </div>
+
+                             {/* Inst Flow */}
+                             <div className="flex items-start gap-3">
+                                <TrendingUp className="w-5 h-5 text-[#848e9c] mt-0.5" />
+                                <div>
+                                    <div className="text-xs text-[#848e9c]">Inst. Flow</div>
+                                    <div className={`text-sm font-medium ${instFlow.includes("Accumulation") ? 'text-[#0ecb81]' : instFlow.includes("Distribution") ? 'text-[#f6465d]' : 'text-white'}`}>
+                                        {instFlow}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Levels */}
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                <div className="bg-[#161a1e] p-2 rounded">
+                                    <div className="text-[10px] text-[#848e9c] mb-1">Resistance</div>
+                                    <div className="text-sm font-mono text-[#f6465d]">${resistance.toFixed(2)}</div>
+                                </div>
+                                <div className="bg-[#161a1e] p-2 rounded">
+                                    <div className="text-[10px] text-[#848e9c] mb-1">Support</div>
+                                    <div className="text-sm font-mono text-[#0ecb81]">${support.toFixed(2)}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+                    {/* AI Board of Advisors (New) */}
+                    <div>
+                        <h3 className="text-xs font-bold text-[#848e9c] uppercase mb-3">AI Board of Advisors</h3>
+                        <div className="space-y-2">
+                            {/* XGBoost */}
+                            <div className="flex justify-between items-center bg-[#2b3139]/30 p-2 rounded border border-[#2b3139]">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">Quant Model</span>
+                                    <span className="text-[9px] text-[#848e9c]">XGBoost v2</span>
+                                </div>
+                                <div className="text-right">
+                                    <div className={`text-xs font-bold ${xgb.signal === 'Bullish' ? 'text-[#0ecb81]' : xgb.signal === 'Bearish' ? 'text-[#f6465d]' : 'text-white'}`}>
+                                        {xgb.signal}
+                                    </div>
+                                    <div className="text-[9px] text-[#848e9c]">{xgb.probability}% Prob.</div>
+                                </div>
+                            </div>
+
+                            {/* LSTM */}
+                            <div className="flex justify-between items-center bg-[#2b3139]/30 p-2 rounded border border-[#2b3139]">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">Pattern AI</span>
+                                    <span className="text-[9px] text-[#848e9c]">LSTM Neural Net</span>
+                                </div>
+                                <div className="text-right">
+                                    <div className={`text-xs font-bold ${lstm.signal === 'Bullish' ? 'text-[#0ecb81]' : lstm.signal === 'Bearish' ? 'text-[#f6465d]' : 'text-white'}`}>
+                                        {lstm.signal}
+                                    </div>
+                                    <div className="text-[9px] text-[#848e9c]">{lstm.confidence}% Conf.</div>
+                                </div>
+                            </div>
+
+                            {/* Sentiment */}
+                            <div className="flex justify-between items-center bg-[#2b3139]/30 p-2 rounded border border-[#2b3139]">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">News Sentiment</span>
+                                    <span className="text-[9px] text-[#848e9c]">FinBERT NLP</span>
+                                </div>
+                                <div className="text-right">
+                                    <div className={`text-xs font-bold ${sentimentExpert.score > 20 ? 'text-[#0ecb81]' : sentimentExpert.score < -20 ? 'text-[#f6465d]' : 'text-white'}`}>
+                                        {sentimentExpert.label}
+                                    </div>
+                                    <div className="text-[9px] text-[#848e9c]">Score: {sentimentExpert.score}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* AI Select / Technicals */}
+                    <div>
+                        <h3 className="text-xs font-bold text-[#848e9c] uppercase mb-3">Technical Factors</h3>
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                                <span className="text-[#848e9c]">RSI (14)</span>
+                                <span className="text-white">{breakdown.rsi_val?.toFixed(1) || 50.0}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                                <span className="text-[#848e9c]">Trend Strength</span>
+                                <span className="text-white">{breakdown.trend_normalized?.toFixed(1) || 0.0}</span>
+                            </div>
+                             <div className="flex justify-between text-xs">
+                                <span className="text-[#848e9c]">Sentiment</span>
+                                <span className={current_sentiment > 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>
+                                    {current_sentiment?.toFixed(2) || 0.00}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-auto bg-gradient-to-b from-[#2b3139] to-[#1e2329] p-3 rounded border border-[#2b3139]">
+                         <div className="flex items-center gap-2 mb-2">
+                             <Shield className="w-4 h-4 text-[#0ecb81]" />
+                             <span className="text-xs font-bold text-white">Risk Analysis</span>
+                         </div>
+                         <p className="text-[10px] text-[#848e9c] leading-relaxed">
+                            Volatility is moderate. AI suggests maintaining current positions with a trailing stop-loss at ${support.toFixed(2)}.
+                         </p>
+                    </div>
+
                 </div>
             </div>
         </div>
