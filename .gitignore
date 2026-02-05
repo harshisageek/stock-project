@@ -32,3 +32,6 @@ yarn-error.log*
 # Logs
 logs/
 *.log
+
+# Training Data
+brain/saved_models/training_cache.npz

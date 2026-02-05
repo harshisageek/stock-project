@@ -2,135 +2,112 @@ import os
 import torch
 import numpy as np
 import logging
-import joblib
+import pickle
 import pandas as pd
 from typing import List, Tuple
+from sklearn.preprocessing import StandardScaler 
 from brain.core.config import BrainConfig
 from brain.core.types import StockDataPoint
-from brain.prediction.lstm import StockLSTM
+from brain.neural_networks.model import StockLSTM
+from brain.core.indicators import add_technical_indicators
 
 logger = logging.getLogger(__name__)
 
 class PredictionEngine:
     """
     Manages the PyTorch LSTM model for price direction prediction.
-    Fixes feature ordering bugs from legacy implementation.
     """
     def __init__(self):
         self.config = BrainConfig.get_instance()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = None
         self.scaler = None
+        self.target_mean = 0.0
+        self.target_std = 1.0
         self._loaded = False
+        self.FEATURE_COLS = [
+            'Log_Ret', 'RSI', 'MACD', 'MACD_Signal', 
+            'BB_Pct', 'Vol_Ratio', 'ROC', 
+            'SMA_Ratio', 'ATR_Pct', 'CCI', 
+            'Ret_1d', 'Ret_3d', 'Ret_5d', 'Ret_10d', 'Ret_20d',
+            'Sentiment', 'NewsVol'
+        ]
         
     def _load_resources(self):
         if self._loaded:
             return
 
-        # Load Scaler
-        if os.path.exists(self.config.SCALER_PATH):
-            try:
-                self.scaler = joblib.load(self.config.SCALER_PATH)
-            except Exception as e:
-                logger.error(f"Scaler load failed: {e}")
-                return
-        else:
-            logger.warning("Scaler not found. Prediction disabled.")
-            return
-
-        # Load Model
         try:
-            self.model = StockLSTM(input_size=13) # Architecture fixed
+            # Load Model
+            self.model = StockLSTM(input_size=17) 
             if os.path.exists(self.config.MODEL_PATH):
                 state = torch.load(self.config.MODEL_PATH, map_location=self.device)
                 self.model.load_state_dict(state)
                 self.model.to(self.device)
                 self.model.eval()
-                self._loaded = True
-                logger.info("Neural Model Loaded Successfully.")
             else:
                 logger.warning("Model weights not found.")
+                return
+
+            # Load Scaler & Target Stats
+            scaler_path = "brain/saved_models/scaler.pkl"
+            if os.path.exists(scaler_path):
+                with open(scaler_path, 'rb') as f:
+                    data = pickle.load(f)
+                    if isinstance(data, dict):
+                        self.scaler = data['scaler']
+                        self.target_mean = data.get('mean', 0.0)
+                        self.target_std = data.get('std', 1.0)
+                    else:
+                        self.scaler = data
+                        
+                logger.info(f"Neural Resources Loaded. Target Mean: {self.target_mean:.4f}, Std: {self.target_std:.4f}")
+                self._loaded = True
+            else:
+                logger.warning("Scaler not found. Predictions will be inaccurate.")
+
         except Exception as e:
-            logger.error(f"Model load failed: {e}")
+            logger.error(f"Resource load failed: {e}")
 
     def prepare_data(self, data: List[StockDataPoint], sequence_length=60):
-        """
-        Prepares data for inference (Feature Engineering + Scaling).
-        """
-        if not data or len(data) < sequence_length + 30: # Need extra buffer for indicators
+        if not data or len(data) < sequence_length + 30: 
             return None
             
-        # 1. Convert to DataFrame
-        # Map Pydantic fields to expected internal names
         records = [
-            {
-                'Open': d.open, 
-                'High': d.high, 
-                'Low': d.low, 
-                'Close': d.close, 
-                'Volume': d.volume,
-                'datetime': d.datetime
-            } 
+            {'Open': d.open, 'High': d.high, 'Low': d.low, 'Close': d.close, 'Volume': d.volume, 'datetime': d.datetime} 
             for d in data
         ]
         df = pd.DataFrame(records)
-        df['datetime'] = pd.to_datetime(df['datetime'])
-        df.set_index('datetime', inplace=True)
-        df.sort_index(inplace=True)
         
-        # 2. Add Technical Indicators (Manual Implementation to match training logic)
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        
-        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
-        df['MACD'] = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
-        df['MACD_Signal'] = df['MACD'].ewm(span=9).mean()
-        
-        df['Returns'] = df['Close'].pct_change()
-        df['Volatility'] = df['Returns'].rolling(window=20).std()
-        
-        ma20 = df['Close'].rolling(window=20).mean()
-        std20 = df['Close'].rolling(window=20).std()
-        df['BB_Upper'] = (ma20 + (std20 * 2)) / df['Close']
-        df['BB_Lower'] = (ma20 - (std20 * 2)) / df['Close']
-        
-        # 3. Pct Change for OHLCV
-        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-            df[col] = df[col].pct_change()
-            
-        # 4. Add Missing Features (Sentiment/NewsVol)
-        # Note: In inference, we might have global sentiment, but the model expects per-day.
-        # Ideally we map historical sentiment, but for now we default to 0.0 like training.
+        df = add_technical_indicators(df)
         df['Sentiment'] = 0.0 
         df['NewsVol'] = 0.0
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
         
-        # 5. Clean
-        df = df.dropna().replace([np.inf, -np.inf], 0)
-        
-        if len(df) < sequence_length:
-            return None
-            
-        # 6. Select Features in CORRECT ORDER (Matching prepare_ticker_data)
-        feature_cols = [
-            'Open', 'High', 'Low', 'Close', 'Volume', 
-            'RSI', 'MACD', 'MACD_Signal', 'Volatility', 
-            'BB_Upper', 'BB_Lower', 'Sentiment', 'NewsVol'
-        ]
-        
-        # 7. Scale
         try:
-            scaled_data = self.scaler.transform(df[feature_cols].values)
-            # Return last sequence
+            # Use the PRE-TRAINED scaler, do not fit a new one!
+            if self.scaler is None:
+                logger.error("Scaler not loaded.")
+                return None
+                
+            features = df[self.FEATURE_COLS].values
+            scaled_data = self.scaler.transform(features)
+            
+            if len(scaled_data) < sequence_length: return None
             return np.array([scaled_data[-sequence_length:]])
         except Exception as e:
             logger.error(f"Scaling error: {e}")
             return None
 
     def predict(self, data: List[StockDataPoint]) -> Tuple[str, float]:
+        """
+        Returns:
+            signal (str): "Bullish", "Bearish", or "Neutral"
+            confidence (float): Probability (0.0 to 1.0)
+        """
         self._load_resources()
         
-        if not self._loaded or not self.scaler:
+        if not self._loaded:
             return "Neutral (Model Off)", 0.0
             
         try:
@@ -142,11 +119,25 @@ class PredictionEngine:
             input_tensor = torch.FloatTensor(input_tensor_np).to(self.device)
             
             with torch.no_grad():
+                # CLASSIFICATION OUTPUT (Logits for 3 classes)
                 logits = self.model(input_tensor)
-                prediction = torch.sigmoid(logits).item()
+                probs = torch.softmax(logits, dim=1) # [Sell, Hold, Buy]
                 
-            signal = "Bullish" if prediction > 0.50 else "Bearish"
-            return signal, prediction
+                # Get the class with highest probability
+                confidence, predicted_class = torch.max(probs, 1)
+                class_idx = predicted_class.item()
+                conf_val = confidence.item()
+                
+            # Map Class Index to Signal
+            # 0 = Sell, 1 = Hold, 2 = Buy
+            if class_idx == 2:
+                signal = "Bullish"
+            elif class_idx == 0:
+                signal = "Bearish"
+            else:
+                signal = "Neutral"
+            
+            return signal, conf_val
             
         except Exception as e:
             logger.error(f"Inference Error: {e}")

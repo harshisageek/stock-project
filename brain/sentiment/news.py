@@ -61,7 +61,8 @@ def generate_mock_news(ticker: str) -> tuple[list, float]:
         # Dampen mock scores too for consistency
         sentiment = sentiment * 0.95
         
-        title = f"{ticker} {headline_suffix}"
+        # Clear indication of Mock Data
+        title = f"[API FAILED - MOCK DATA] {ticker} {headline_suffix}"
         
         mock_articles.append({
             "title": title,
@@ -218,8 +219,12 @@ def fetch_gnews(ticker: str, company_name: str = None) -> tuple[list, float]:
 
     # Final Aggregation
     if not valid_articles:
+        # Only fallback to mock if we ran out of keys or had errors
         if not active_keys or current_key_idx >= len(active_keys):
             return generate_mock_news(ticker)
+        
+        # If API succeeded but just found no news (e.g. obscure ticker), return empty
+        logger.info(f"No valid articles found for {ticker}.")
         return [], 0.0
 
     # Weighted Average

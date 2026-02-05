@@ -6,6 +6,8 @@ import logging
 from typing import List, Tuple
 from brain.core.config import BrainConfig
 from brain.core.types import StockDataPoint
+from brain.core.indicators import add_technical_indicators
+from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +15,24 @@ class XGBoostPredictor:
     """
     The 'Quant Analyst'.
     Uses a PRE-TRAINED XGBoost model to predict probability of significant price increase.
-    INFERENCE ONLY. No on-the-fly training.
+    INFERENCE ONLY.
     """
     def __init__(self):
         self.config = BrainConfig.get_instance()
         self.model = None
         self._is_ready = False
-        self.model_path = "brain/saved_models/xgboost_model.json"
+        
+        # Exact feature order for Training and Inference consistency
+        # Updated to Stationary Features
+        self.FEATURE_COLS = [
+            'Log_Ret', 'RSI', 'MACD', 'MACD_Signal', 
+            'BB_Pct', 'Vol_Ratio', 'ROC', 
+            'SMA_Ratio',
+            'Sentiment', 'NewsVol'
+        ]
+        
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+        self.model_path = os.path.join(base_dir, "saved_models", "xgboost_model.json")
         
         self._load_model()
         
@@ -34,37 +47,6 @@ class XGBoostPredictor:
                 logger.error(f"Failed to load XGBoost model: {e}")
         else:
             logger.warning(f"XGBoost model file not found at {self.model_path}. Predictor disabled.")
-
-    def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Calculates features: RSI, MACD, BB, ROC.
-        MUST match training script logic exactly.
-        """
-        if len(df) < 30: return df
-        
-        # RSI
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
-        
-        # MACD
-        exp1 = df['close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['close'].ewm(span=26, adjust=False).mean()
-        df['macd'] = exp1 - exp2
-        df['signal'] = df['macd'].ewm(span=9, adjust=False).mean()
-        
-        # Bollinger Bands
-        df['ma20'] = df['close'].rolling(window=20).mean()
-        df['std'] = df['close'].rolling(window=20).std()
-        df['upper_bb'] = df['ma20'] + (df['std'] * 2)
-        df['lower_bb'] = df['ma20'] - (df['std'] * 2)
-        
-        # ROC (Rate of Change)
-        df['roc'] = df['close'].pct_change(periods=10) * 100
-        
-        return df.dropna()
 
     def predict_probability(self, data: List[StockDataPoint]) -> Tuple[str, float]:
         """
@@ -82,23 +64,36 @@ class XGBoostPredictor:
         records = [{'close': d.close, 'open': d.open, 'high': d.high, 'low': d.low, 'volume': d.volume} for d in data]
         df = pd.DataFrame(records)
         
-        # 2. Feature Engineering
-        df_features = self._calculate_indicators(df)
+        # 2. Feature Engineering (Centralized)
+        df = df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+        df = add_technical_indicators(df)
         
-        if df_features.empty:
+        # Fill missing features
+        df['Sentiment'] = 0.0
+        df['NewsVol'] = 0.0
+        
+        # Drop NaNs
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        if df.empty:
             return "Neutral", 0.5
             
-        # Select features for the LAST row (current market state)
-        feature_cols = ['rsi', 'macd', 'signal', 'upper_bb', 'lower_bb', 'roc']
-        last_row = df_features.iloc[[-1]][feature_cols]
-        
+        # 3. Dynamic Scaling (CRITICAL)
         try:
-            # 3. Predict Probability of Class 1 (UP)
+            scaler = StandardScaler()
+            # Fit on the entire window (dynamic scaling)
+            features = df[self.FEATURE_COLS].values
+            scaled_features = scaler.fit_transform(features)
+            
+            # Select the LAST row (current state)
+            last_row = scaled_features[-1].reshape(1, -1)
+            
+            # 4. Predict
             # predict_proba returns [[prob_0, prob_1]]
             probs = self.model.predict_proba(last_row)[0]
             prob_up = float(probs[1])
             
-            # 4. Threshold Logic (0.6 / 0.4)
+            # 5. Threshold Logic (0.6 / 0.4)
             if prob_up > 0.6:
                 signal = "Bullish"
             elif prob_up < 0.4:

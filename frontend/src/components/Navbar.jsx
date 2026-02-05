@@ -1,32 +1,32 @@
 import { Moon, Sun, Menu, X, LogOut, LayoutDashboard, Newspaper, Eye, Search, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import SearchBar from './SearchBar';
 import { useAuth } from '../context/AuthContext';
 import AuthModal from './AuthModal';
 import logoDark from '../assets/logo-dark.png';
 import logoLight from '../assets/logo-light.png';
 
-const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
+const Navbar = ({ toggleTheme, isDark }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [showAuthModal, setShowAuthModal] = useState(false);
     const { user, signOut } = useAuth();
+    const navigate = useNavigate();
     
     // Custom Tab Component for Desktop
-    const NavTab = ({ label, tab, icon: Icon }) => {
-        const isActive = activeTab === tab;
+    const NavTab = ({ label, to, icon: Icon }) => {
         return (
-            <button 
-                type="button"
-                onClick={() => onTabChange(tab)}
-                className={`group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+            <NavLink 
+                to={to}
+                className={({ isActive }) => `group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive 
                     ? 'bg-[var(--accent-color)] text-[#181a20] shadow-md transform scale-105' 
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]'
                 }`}
             >
-                <Icon className={`w-4 h-4 ${isActive ? 'stroke-[2.5px]' : 'group-hover:stroke-[2.5px]'}`} />
+                <Icon className="w-4 h-4 group-hover:stroke-[2.5px]" />
                 <span>{label}</span>
-            </button>
+            </NavLink>
         );
     };
 
@@ -42,7 +42,7 @@ const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
                 <div className="flex justify-between items-center h-16 py-2">
                     
                     {/* Left: Brand & Logo */}
-                    <div className="flex-shrink-0 flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>
+                    <Link to="/" className="flex-shrink-0 flex items-center gap-3 cursor-pointer group">
                         <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-105">
                             <img 
                                 src={isDark ? logoDark : logoLight} 
@@ -55,18 +55,18 @@ const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
                                 PRISM
                             </span>
                         </div>
-                    </div>
+                    </Link>
 
                     {/* Center: Navigation Tabs (Desktop) */}
                     <div className="hidden md:flex items-center gap-1 bg-[var(--bg-secondary)] p-1.5 rounded-xl border border-[var(--border-color)]">
-                        <NavTab label="Markets" tab="markets" icon={BarChart3} />
-                        <NavTab label="News" tab="news" icon={Newspaper} />
-                        <NavTab label="Watchlist" tab="watchlist" icon={Eye} />
+                        <NavTab label="Markets" to="/" icon={BarChart3} />
+                        <NavTab label="News" to="/news" icon={Newspaper} />
+                        <NavTab label="Watchlist" to="/watchlist" icon={Eye} />
                         
                         {/* Vertical Divider */}
                         <div className="w-px h-5 bg-[var(--border-color)] mx-1"></div>
                         
-                        <NavTab label="DeepDive" tab="analysis" icon={Search} />
+                        <NavTab label="DeepDive" to="/analysis" icon={Search} />
                     </div>
 
                     {/* Right: Search & Actions */}
@@ -74,7 +74,7 @@ const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
                         
                         {/* Search Bar - Collapses on smaller md screens */}
                         <div className="hidden lg:block w-64">
-                            <SearchBar onSearch={onSearch} inline={true} />
+                            <SearchBar inline={true} />
                         </div>
 
                         {/* Theme Toggle */}
@@ -151,26 +151,21 @@ const Navbar = ({ toggleTheme, isDark, onSearch, activeTab, onTabChange }) => {
                     style={{ backgroundColor: 'var(--bg-card)' }}
                 >
                     <div className="p-4 space-y-4">
-                        <SearchBar onSearch={(t) => { onSearch(t); setIsOpen(false); }} inline={true} />
+                        <SearchBar inline={true} />
                         
                         <div className="grid grid-cols-2 gap-3">
-                            {['markets', 'news', 'watchlist', 'analysis'].map(tab => (
-                                <button 
-                                    key={tab}
-                                    onClick={() => { onTabChange(tab); setIsOpen(false); }} 
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-bold border transition-all ${
-                                        activeTab === tab 
-                                        ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-black' 
-                                        : 'bg-[var(--bg-secondary)] border-transparent text-[var(--text-secondary)]'
-                                    }`}
-                                >
-                                    {tab === 'markets' && <BarChart3 className="w-4 h-4" />}
-                                    {tab === 'news' && <Newspaper className="w-4 h-4" />}
-                                    {tab === 'watchlist' && <Eye className="w-4 h-4" />}
-                                    {tab === 'analysis' && <Search className="w-4 h-4" />}
-                                    {tab === 'analysis' ? 'DeepDive' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                                </button>
-                            ))}
+                            <NavLink to="/" onClick={() => setIsOpen(false)} className={({isActive}) => `flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-bold border transition-all ${isActive ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-black' : 'bg-[var(--bg-secondary)] border-transparent text-[var(--text-secondary)]'}`}>
+                                <BarChart3 className="w-4 h-4" /> Markets
+                            </NavLink>
+                            <NavLink to="/news" onClick={() => setIsOpen(false)} className={({isActive}) => `flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-bold border transition-all ${isActive ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-black' : 'bg-[var(--bg-secondary)] border-transparent text-[var(--text-secondary)]'}`}>
+                                <Newspaper className="w-4 h-4" /> News
+                            </NavLink>
+                            <NavLink to="/watchlist" onClick={() => setIsOpen(false)} className={({isActive}) => `flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-bold border transition-all ${isActive ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-black' : 'bg-[var(--bg-secondary)] border-transparent text-[var(--text-secondary)]'}`}>
+                                <Eye className="w-4 h-4" /> Watchlist
+                            </NavLink>
+                            <NavLink to="/analysis" onClick={() => setIsOpen(false)} className={({isActive}) => `flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-bold border transition-all ${isActive ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-black' : 'bg-[var(--bg-secondary)] border-transparent text-[var(--text-secondary)]'}`}>
+                                <Search className="w-4 h-4" /> DeepDive
+                            </NavLink>
                         </div>
 
                         {!user && (

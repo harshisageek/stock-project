@@ -8,6 +8,15 @@
   --color-binance-yellow: #fcd535;
   --color-up: #0ecb81;
   --color-down: #f6465d;
+  
+  /* Custom Animations */
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-pulse-glow: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.05); }
+  }
 }
 
 @layer base {
@@ -28,6 +37,7 @@
     --text-secondary: #5f6368;
     --border-color: #dadce0;
     --accent-color: #1a73e8;
+    --accent-cyan: #06b6d4; /* Added for LoadingSpinner */
   }
 
   /* Dark Mode (Binance Style) */
@@ -39,6 +49,7 @@
     --text-secondary: #848e9c;
     --border-color: #2b3139;
     --accent-color: #fcd535; /* Binance Yellow */
+    --accent-cyan: #00d4ff; /* Added for LoadingSpinner */
   }
 }
 

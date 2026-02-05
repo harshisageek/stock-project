@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, Activity, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import SearchBar from './SearchBar';
 
-const AnalysisLanding = ({ onSearch }) => {
+const AnalysisLanding = () => {
+    const navigate = useNavigate();
     const [trending, setTrending] = useState([]);
 
     useEffect(() => {
@@ -23,8 +25,6 @@ const AnalysisLanding = ({ onSearch }) => {
             
         return () => clearTimeout(timeoutId);
     }, []);
-
-    const quickTickers = ["NVDA", "TSLA", "BTC-USD", "AAPL", "AMD"];
 
     return (
         <div className="min-h-[85vh] w-full flex flex-col items-center pt-20 pb-12 px-4 animate-fade-in">
@@ -50,7 +50,7 @@ const AnalysisLanding = ({ onSearch }) => {
                 {/* Search Section */}
                 <div className="w-full max-w-2xl space-y-6">
                     <div className="bg-[var(--bg-card)] rounded-2xl shadow-xl border border-[var(--border-color)] transition-shadow hover:shadow-2xl overflow-hidden">
-                         <SearchBar onSearch={onSearch} autoFocus={true} placeholder="Search ticker symbol..." clean={true} />
+                         <SearchBar autoFocus={true} placeholder="Search ticker symbol..." clean={true} />
                     </div>
                 </div>
 
@@ -72,7 +72,7 @@ const AnalysisLanding = ({ onSearch }) => {
                         {trending.map((item, idx) => (
                             <div 
                                 key={idx}
-                                onClick={() => onSearch(item.symbol)}
+                                onClick={() => navigate(`/analysis/${item.symbol.toUpperCase()}`)}
                                 className="group cursor-pointer bg-[var(--bg-card)] p-5 rounded-xl border border-[var(--border-color)] hover:border-[var(--accent-color)] hover:shadow-lg transition-all duration-300 relative overflow-hidden"
                             >
                                 {/* Hover Gradient bg */}

@@ -6,14 +6,16 @@
 
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = 'http://127.0.0.1:5000';
 
-function SearchBar({ onSearch, isLoading, inline = false, clean = false, placeholder, autoFocus }) {
+function SearchBar({ isLoading, inline = false, clean = false, placeholder, autoFocus }) {
     const [ticker, setTicker] = useState('');
     const [results, setResults] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
-    const [searchLoading, setSearchLoading] = useState(false);
+    const [, setSearchLoading] = useState(false);
+    const navigate = useNavigate();
 
     // Debounce logic
     useEffect(() => {
@@ -40,20 +42,28 @@ function SearchBar({ onSearch, isLoading, inline = false, clean = false, placeho
         return () => clearTimeout(delayDebounceFn);
     }, [ticker]);
 
+    const performSearch = (symbol, name) => {
+        if (!symbol) return;
+        const target = symbol.toUpperCase();
+        // Optional: Pass name via state if needed, but for now just param
+        // navigate(`/analysis/${target}`, { state: { companyName: name } });
+        // Simpler: Just param, Dashboard will fetch
+        navigate(`/analysis/${target}${name ? `?name=${encodeURIComponent(name)}` : ''}`);
+        setShowDropdown(false);
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (ticker.trim() && !isLoading) {
             const match = results.find(r => r.symbol === ticker.trim().toUpperCase());
             const name = match ? match.instrument_name : null;
-            onSearch(ticker.trim().toUpperCase(), name);
-            setShowDropdown(false);
+            performSearch(ticker.trim(), name);
         }
     };
 
     const handleSelect = (symbol, name) => {
         setTicker(symbol);
-        onSearch(symbol, name);
-        setShowDropdown(false);
+        performSearch(symbol, name);
     };
 
     const handleBlur = () => {

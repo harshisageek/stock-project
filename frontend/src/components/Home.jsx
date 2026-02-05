@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, ArrowRight, Loader2, BarChart2, Newspaper, Activity, Zap, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import logoDark from '../assets/logo-dark.png';
 import logoLight from '../assets/logo-light.png';
 
@@ -44,7 +45,9 @@ const TradingViewWidget = () => {
     );
 };
 
-const MarketCard = ({ title, data, icon: Icon, type, onSearch }) => {
+const MarketCard = ({ title, data, icon: Icon, type }) => {
+    const navigate = useNavigate();
+
     return (
         <div className="card h-full flex flex-col hover:shadow-lg transition-shadow duration-300 overflow-hidden group">
             <div className="p-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)]/50">
@@ -71,7 +74,7 @@ const MarketCard = ({ title, data, icon: Icon, type, onSearch }) => {
                             {data.map((item, idx) => (
                                 <tr 
                                     key={idx}
-                                    onClick={() => onSearch(item.symbol)}
+                                    onClick={() => navigate(`/analysis/${item.symbol.toUpperCase()}`)}
                                     className="cursor-pointer hover:bg-[var(--bg-secondary)] transition-colors group/row"
                                 >
                                     <td className="py-3 px-2">
@@ -106,7 +109,8 @@ const MarketCard = ({ title, data, icon: Icon, type, onSearch }) => {
     );
 };
 
-const Home = ({ onSearch, activeTab = 'markets', isDark }) => {
+const Home = ({ activeTab = 'markets', isDark }) => {
+    const navigate = useNavigate();
     const [movers, setMovers] = useState({ gainers: [], losers: [], active: [] });
     const [news, setNews] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -194,7 +198,7 @@ const Home = ({ onSearch, activeTab = 'markets', isDark }) => {
                             {popularTickers.map((t) => (
                                 <button
                                     key={t.sym}
-                                    onClick={() => onSearch(t.sym)}
+                                    onClick={() => navigate(`/analysis/${t.sym}`)}
                                     className="px-3 py-1 rounded-full text-xs font-bold bg-[var(--bg-primary)] border border-[var(--border-color)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-all shadow-sm"
                                     style={{ color: 'var(--text-primary)' }}
                                 >
@@ -238,9 +242,9 @@ const Home = ({ onSearch, activeTab = 'markets', isDark }) => {
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <MarketCard title="Top Gainers" data={movers.gainers} icon={TrendingUp} type="gainer" onSearch={onSearch} />
-                                <MarketCard title="Top Losers" data={movers.losers} icon={TrendingDown} type="loser" onSearch={onSearch} />
-                                <MarketCard title="Most Active" data={movers.active || []} icon={Activity} type="active" onSearch={onSearch} />
+                                <MarketCard title="Top Gainers" data={movers.gainers} icon={TrendingUp} type="gainer" />
+                                <MarketCard title="Top Losers" data={movers.losers} icon={TrendingDown} type="loser" />
+                                <MarketCard title="Most Active" data={movers.active || []} icon={Activity} type="active" />
                             </div>
                         )}
                     </div>

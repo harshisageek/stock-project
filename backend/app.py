@@ -197,7 +197,18 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
         current_sentiment = 0.0
 
     # 3. Fetch Stock Data (Twelve Data)
-    range_map = {"1W": "7", "1M": "30", "3M": "90", "6M": "180", "1Y": "365", "MAX": "5000"}
+    # Calculate YTD days
+    days_ytd = (datetime.now() - datetime(datetime.now().year, 1, 1)).days + 1
+    
+    range_map = {
+        "1W": "7", 
+        "1M": "30", 
+        "3M": "90", 
+        "6M": "180", 
+        "YTD": str(days_ytd),
+        "1Y": "365", 
+        "MAX": "5000"
+    }
     
     # Enforce min 300 data points for Neural Network
     requested_size_str = range_map.get(range_str, "7")
@@ -269,6 +280,7 @@ def fetch_stock_data(ticker, range_str="1W", force_refresh=False, company_name=N
         quant_result = {
             "final_score": analysis.final_score,
             "signal": analysis.signal.value,
+            "confidence": analysis.confidence, # Add System-Wide Confidence
             "breakdown": {
                 "rsi_val": round(tech_vals["rsi"], 2) if tech_vals.get("rsi") is not None and not pd.isna(tech_vals["rsi"]) else None,
                 "rsi_normalized": round(tech_scores["rsi"], 2),

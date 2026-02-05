@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Star, Trash2, Plus, ArrowRight, Lock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getWatchlist, removeFromWatchlist, addToWatchlist } from '../supabase';
 import AuthModal from './AuthModal';
 import SearchBar from './SearchBar';
 
-const WatchlistPage = ({ onSearch }) => {
+const WatchlistPage = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showAuth, setShowAuth] = useState(false);
@@ -134,7 +136,7 @@ const WatchlistPage = ({ onSearch }) => {
                     {watchlist.map((item) => (
                         <div 
                             key={item.id}
-                            onClick={() => onSearch(item.ticker)}
+                            onClick={() => navigate(`/analysis/${item.ticker}`)}
                             className="group relative p-6 rounded-xl border cursor-pointer hover:-translate-y-1 transition-all duration-300"
                             style={{ 
                                 backgroundColor: 'var(--bg-card)', 
